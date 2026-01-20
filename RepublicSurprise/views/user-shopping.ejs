@@ -448,7 +448,7 @@
           <div class="catalog-header">
             <div>
               <p class="eyebrow">Blind boxes & collectibles</p>
-              <h1>Shop the drop</h1>
+              <h1>Shop Your Collection!</h1>
               <p class="lead">Discover playful, artful toys. Pick your favorite figure or grab a set and send it to your cart.</p>
             </div>
             <div class="pill">
@@ -465,12 +465,12 @@
     <script>
       const serverProducts = <%- JSON.stringify(products || []) %>;
       const demoProducts = [
-        { id: 'lolo', name: 'Lolo the Piggy', price: 49.9, stock: 8, badge: 'Set of 3', image: '/images/lolo_the_piggy.png' },
-        { id: 'pino', name: 'Pino JoJo', price: 37.9, stock: 5, badge: 'Single box', image: '/images/pino_jojo.png' },
-        { id: 'hinono', name: 'Hinono', price: 61.9, stock: 0, badge: 'Collector set', image: '/images/hinono.png' },
-        { id: 'zimama', name: 'Zimama', price: 37.9, stock: 3, badge: 'Single box', image: '/images/zimama.png' },
-        { id: 'sweet-bun', name: 'Sweet Bun', price: 20.9, stock: 12, badge: 'Single box', image: '/images/sweet_bun.png' },
-        { id: 'hacibubu', name: 'Hacibubu', price: 38.8, stock: 7, badge: 'Limited', image: '/images/hacibubu.png' }
+        { id: 'lolo', name: 'Lolo the Piggy', price: 49.9, stock: 8, badge: 'Set of 3', image: '/images/lolo_the_piggy.png', description: 'A cheerful trio of piggy pals.' },
+        { id: 'pino', name: 'Pino JoJo', price: 37.9, stock: 5, badge: 'Single box', image: '/images/pino_jojo.png', description: 'Dreamy pastel friend.' },
+        { id: 'hinono', name: 'Hinono', price: 61.9, stock: 0, badge: 'Collector set', image: '/images/hinono.png', description: 'Collector set of mystical figures.' },
+        { id: 'zimama', name: 'Zimama', price: 37.9, stock: 3, badge: 'Single box', image: '/images/zimama.png', description: 'Forest critter guardian.' },
+        { id: 'sweet-bun', name: 'Sweet Bun', price: 20.9, stock: 12, badge: 'Single box', image: '/images/sweet_bun.png', description: 'Fluffy friend for cozy nights.' },
+        { id: 'hacibubu', name: 'Hacibubu', price: 38.8, stock: 7, badge: 'Limited', image: '/images/hacibubu.png', description: 'Limited run surprise.' }
       ];
 
       const fallbackImages = [
@@ -498,7 +498,7 @@
             stock,
             badge,
             image: item.image || fallbackImages[index % fallbackImages.length],
-            description: item.productDescription || 'Blind box collectible'
+            description: item.productDescription || item.description || 'Collectible figure'
           };
         });
       };
@@ -587,7 +587,7 @@
                     <h3>${item.name}</h3>
                     <div class="price">${formatPrice(item.price)}</div>
                   </div>
-                  <p class="meta">${item.description}</p>
+                  <p class="meta">${item.description || ''}</p>
                   <div class="stock">
                     <span class="dot" style="background:${available ? '#10b981' : '#ef4444'}"></span>
                     ${available ? 'In stock' : 'Out of stock'}
