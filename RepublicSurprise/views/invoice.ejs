@@ -1,0 +1,102 @@
+<%- include('partials/header') %>
+
+<style>
+  :root{ --bg:#f6f2ea; --card:#fff; --accent:#f97316; --muted:#6b7280; --shadow:0 12px 30px rgba(2,6,23,0.06); --radius:16px }
+  body{ background:var(--bg) }
+  .wrap{ max-width:900px; margin:28px auto; padding:18px; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial; color:#0f172a }
+  .card{ background:var(--card); border-radius:var(--radius); padding:18px; box-shadow:var(--shadow); border:1px solid rgba(0,0,0,0.04) }
+  h2{ margin:0 0 6px }
+  .muted{ color:var(--muted) }
+  table{ width:100%; border-collapse:collapse; margin-top:12px }
+  th,td{ padding:10px 8px; border-bottom:1px solid #f1efe9; text-align:left }
+  .total{ display:flex; justify-content:space-between; font-weight:800; margin-top:12px }
+  .btn{ background:var(--accent); color:#071; border:none; padding:10px 14px; border-radius:12px; font-weight:800; cursor:pointer; text-decoration:none; display:inline-block }
+  .small{ font-size:0.95rem; color:var(--muted) }
+  .warn{ background:#fff3f2; border:1px solid rgba(176,11,11,0.08); padding:12px; border-radius:12px; color:#7b1d12 }
+</style>
+
+<div class="wrap">
+  <div id="no-invoice" style="display:none"><div class="card warn"><div style="font-weight:800">No invoice data available.</div><div class="small">Return to cart or complete a payment first.</div><a class="btn" href="/cart" style="margin-top:10px;display:inline-block;text-decoration:none">Back to Cart</a></div></div>
+
+  <div id="card" style="display:none" class="card">
+    <h2>Invoice</h2>
+    <div class="small muted" style="margin-bottom:12px">Demo invoice</div>
+    <div style="display:flex;gap:18px;flex-wrap:wrap">
+      <div style="flex:1;min-width:220px"><div><strong>Invoice ID:</strong> <span id="id"></span></div><div><strong>Date:</strong> <span id="date"></span></div></div>
+      <div style="flex:1;min-width:220px"><div><strong>Buyer:</strong> <span id="buyer"></span></div><div><strong>Merchant:</strong> <span id="merchant"></span></div></div>
+    <%- include('partials/header') %>
+
+    <style>
+      :root{ --bg:#f6f2ea; --card:#fff; --accent:#f97316; --muted:#6b7280; --shadow:0 12px 30px rgba(2,6,23,0.06); --radius:12px }
+      body{ background:var(--bg) }
+      .wrap{ max-width:900px; margin:28px auto; padding:18px; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial; color:#0f172a }
+      .card{ background:var(--card); border-radius:var(--radius); padding:18px; box-shadow:var(--shadow); border:1px solid rgba(0,0,0,0.04) }
+      h2{ margin:0 0 6px }
+      .muted{ color:var(--muted) }
+      table{ width:100%; border-collapse:collapse; margin-top:12px }
+      th,td{ padding:10px 8px; border-bottom:1px solid #f1efe9; text-align:left }
+      .total{ display:flex; justify-content:space-between; font-weight:800; margin-top:12px }
+      .btn{ background:var(--accent); color:#071; border:none; padding:10px 14px; border-radius:12px; font-weight:800; cursor:pointer }
+      .small{ font-size:0.95rem }
+      .warn{ background:#fff3f2; border:1px solid rgba(176,11,11,0.08); padding:12px; border-radius:12px; color:#7b1d12 }
+    </style>
+
+    <div class="wrap">
+      <div id="no-invoice" style="display:none"><div class="card warn"><div style="font-weight:800">No invoice data available.</div><div class="small">Complete a payment first or return to cart.</div><a class="btn" href="/payment" style="margin-top:10px;display:inline-block;text-decoration:none">Back to Payment</a></div></div>
+
+      <div id="card" style="display:none" class="card">
+        <h2>Invoice</h2>
+        <div class="small muted" style="margin-bottom:12px">Demo invoice (frontend-only)</div>
+        <div style="display:flex;gap:18px;flex-wrap:wrap">
+          <div style="flex:1;min-width:220px"><div><strong>Invoice ID:</strong> <span id="id"></span></div><div><strong>Date:</strong> <span id="date"></span></div></div>
+          <div style="flex:1;min-width:220px"><div><strong>Buyer:</strong> <span id="buyer"></span></div><div><strong>Merchant:</strong> <span id="merchant"></span></div></div>
+        </div>
+        <div style="margin-top:12px"><div class="small">Transaction: <a id="tx" href="#" target="_blank" rel="noreferrer"></a></div></div>
+
+        <table aria-label="Invoice items"><thead><tr><th>Item</th><th style="text-align:center">Qty</th><th style="text-align:right">Unit</th><th style="text-align:right">Subtotal</th></tr></thead><tbody id="items"></tbody></table>
+
+        <div class="total"><div class="small">Total paid</div><div id="total">0.000000 ETH</div></div>
+
+        <div style="margin-top:14px"><button id="print" class="btn">Print Invoice</button><a href="/cart" class="btn" style="margin-left:8px;text-decoration:none">Back to Shop</a></div>
+      </div>
+    </div>
+
+    <script>
+    (() => {
+      const KEYS = ['INVOICE_DATA','FA_INVOICE_DATA'];
+      const $ = id => document.getElementById(id);
+      function esc(s){ if(!s) return ''; return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]); }
+      function fmt(n){ return Number(n).toFixed(6) + ' ETH'; }
+
+      document.addEventListener('DOMContentLoaded', ()=>{
+        let raw = null;
+        for(const k of KEYS){ const v = sessionStorage.getItem(k); if(v){ raw = v; break; } }
+        if(!raw){ $('no-invoice').style.display = 'block'; return; }
+        let inv = null;
+        try{ inv = JSON.parse(raw); }catch(e){ $('no-invoice').style.display = 'block'; return; }
+
+        $('id').textContent = inv.invoiceId || '';
+        $('date').textContent = inv.dateTime || '';
+        $('buyer').textContent = inv.buyerAddress || '';
+        $('merchant').textContent = inv.merchantAddress || '';
+
+        const txEl = $('tx');
+        if(inv.txHash){ txEl.textContent = inv.txHash; txEl.href = 'https://etherscan.io/tx/' + inv.txHash; } else { txEl.textContent = ''; txEl.removeAttribute('href'); }
+
+        const body = $('items'); body.innerHTML = '';
+        (inv.items || []).forEach(it => {
+          const tr = document.createElement('tr');
+          const subtotal = (Number(it.price)||0) * (Number(it.qty)||0);
+          tr.innerHTML = '<td>'+esc(it.name)+'</td><td style="text-align:center">'+(it.qty)+'</td><td style="text-align:right">'+fmt(it.price)+'</td><td style="text-align:right">'+fmt(subtotal)+'</td>';
+          body.appendChild(tr);
+        });
+
+        $('total').textContent = fmt(inv.totalPaidEth || inv.total || 0);
+        $('card').style.display = 'block';
+
+        $('print').addEventListener('click', ()=> window.print());
+      });
+    })();
+    </script>
+
+    <%- include('partials/footer') %>

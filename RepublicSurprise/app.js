@@ -322,6 +322,15 @@ app.get('/cart', allowRoles(['user']), (req, res) => {
   res.render('cart', { cart, totals });
 });
 
+// Payment and invoice views (frontend-only handlers)
+app.get('/payment', (req, res) => {
+  res.render('payment');
+});
+
+app.get('/invoice', (req, res) => {
+  res.render('invoice');
+});
+
 app.post('/cart/add', allowRoles(['user']), (req, res) => {
   const cart = getCart(req);
   const item = sanitizeCartItem(req.body);
