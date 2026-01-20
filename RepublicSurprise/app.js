@@ -239,9 +239,12 @@ app.post('/admin/delete-product/:id', allowRoles(['admin']), (req, res) => {
   res.redirect('/admin/inventory');
 });
 
+app.get('/shopping', allowRoles(['user']), (_req, res) => {
+  res.render('user-shopping', { products });
+});
+
 const protectedRoutes = [
   { path: '/mainpage', roles: ['user'], title: 'Main Page' },
-  { path: '/shopping', roles: ['user'], title: 'Shopping Page' },
   { path: '/product', roles: ['user'], title: 'Product Page' },
   { path: '/order-tracking', roles: ['user'], title: 'Order Tracking' },
   { path: '/cart', roles: ['user'], title: 'Cart Page' },
