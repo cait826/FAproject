@@ -31,6 +31,8 @@ app.use((req, res, next) => {
   res.locals.errorMessages = req.flash('error');
   res.locals.successMessages = req.flash('success');
   res.locals.user = req.session.user || null;
+  const cart = req.session.cart || [];
+  res.locals.cartCount = cart.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
   next();
 });
 
@@ -183,6 +185,26 @@ const validateProductPayload = (body, files) => {
   return errors;
 };
 
+const getCart = (req) => {
+  if (!req.session.cart) req.session.cart = [];
+  return req.session.cart;
+};
+
+const sanitizeCartItem = (body) => {
+  const id = (body.id || '').toString();
+  const name = (body.name || '').toString().trim();
+  const price = Number(body.price || 0) || 0;
+  const qty = Math.max(parseInt(body.qty, 10) || 1, 1);
+  return { id, name, price, qty };
+};
+
+const calcCartTotals = (cart) => {
+  const subtotal = cart.reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.qty) || 0), 0);
+  const shipping = subtotal > 0 ? 6.9 : 0;
+  const total = subtotal + shipping;
+  return { subtotal, shipping, total };
+};
+
 app.post('/admin/add-product', allowRoles(['admin']), upload.array('images', 3), (req, res) => {
   const errors = validateProductPayload(req.body, req.files);
   if (errors.length) {
@@ -294,12 +316,53 @@ app.get('/product', allowRoles(['user']), (req, res) => {
   res.render('user-product', { product: selected || null, catalog });
 });
 
+app.get('/cart', allowRoles(['user']), (req, res) => {
+  const cart = getCart(req);
+  const totals = calcCartTotals(cart);
+  res.render('cart', { cart, totals });
+});
+
+app.post('/cart/add', allowRoles(['user']), (req, res) => {
+  const cart = getCart(req);
+  const item = sanitizeCartItem(req.body);
+  if (!item.id || !item.name || !Number.isFinite(item.price)) {
+    return res.status(400).json({ error: 'Invalid cart item.' });
+  }
+  const existing = cart.find((entry) => entry.id === item.id);
+  if (existing) existing.qty += item.qty;
+  else cart.push(item);
+  req.session.cart = cart;
+  const cartCount = cart.reduce((sum, entry) => sum + (Number(entry.qty) || 0), 0);
+  res.json({ cartCount });
+});
+
+app.post('/cart/update', allowRoles(['user']), (req, res) => {
+  const cart = getCart(req);
+  const id = (req.body.id || '').toString();
+  const qty = Math.max(parseInt(req.body.qty, 10) || 0, 0);
+  const index = cart.findIndex((entry) => entry.id === id);
+  if (index >= 0) {
+    if (qty === 0) cart.splice(index, 1);
+    else cart[index].qty = qty;
+    req.session.cart = cart;
+  }
+  res.redirect('/cart');
+});
+
+app.post('/cart/remove/:id', allowRoles(['user']), (req, res) => {
+  const cart = getCart(req);
+  const id = req.params.id;
+  const index = cart.findIndex((entry) => entry.id === id);
+  if (index >= 0) {
+    cart.splice(index, 1);
+    req.session.cart = cart;
+  }
+  res.redirect('/cart');
+});
+
 const protectedRoutes = [
   { path: '/mainpage', roles: ['user'], title: 'Main Page' },
   { path: '/order-tracking', roles: ['user'], title: 'Order Tracking' },
-  { path: '/cart', roles: ['user'], title: 'Cart Page' },
-  { path: '/payment', roles: ['user'], title: 'Payment Page' },
-  { path: '/invoice', roles: ['user'], title: 'Invoice Page' },
   { path: '/delivery/add-status', roles: ['delivery man'], title: 'Add Delivery Status' },
   { path: '/delivery/update-status', roles: ['delivery man'], title: 'Update Delivery Status' }
 ];

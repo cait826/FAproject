@@ -390,14 +390,14 @@
             </svg>
             <span><%= user && user.email ? user.email : (user ? 'Account' : 'Guest') %></span>
           </button>
-          <div class="icon-btn cart-badge" title="Cart">
+          <a class="icon-btn cart-badge" href="/cart" title="Cart">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="9" cy="21" r="1"></circle>
               <circle cx="20" cy="21" r="1"></circle>
               <path d="M1 1h4l1.68 10.06a2 2 0 0 0 2 1.69h7.72a2 2 0 0 0 2-1.69L19 6H6" />
             </svg>
-            <span class="cart-count" data-cart-count>0</span>
-          </div>
+            <span class="cart-count" data-cart-count><%= cartCount || 0 %></span>
+          </a>
         </div>
       </header>
 
@@ -505,8 +505,6 @@
 
       const catalog = serverProducts.length ? normalizeProducts(serverProducts) : demoProducts;
       const state = { sort: 'featured', availability: 'all', search: '' };
-      let cart = [];
-
       const gridEl = document.getElementById('productGrid');
       const countEl = document.getElementById('itemCount');
       const emptyEl = document.getElementById('emptyState');
@@ -517,23 +515,10 @@
 
       const formatPrice = (value) => '$' + (Number(value || 0).toFixed(2));
 
-      const loadCart = () => {
-        try {
-          const stored = localStorage.getItem('rs-cart');
-          cart = stored ? JSON.parse(stored) : [];
-        } catch (_err) {
-          cart = [];
-        }
-        updateCartBadge();
-      };
-
-      const saveCart = () => {
-        try { localStorage.setItem('rs-cart', JSON.stringify(cart)); } catch (_err) {}
-      };
-
-      const updateCartBadge = () => {
-        const total = cart.reduce((sum, item) => sum + item.qty, 0);
-        if (cartCountEl) cartCountEl.textContent = total;
+      const updateCartBadge = (count) => {
+        if (!cartCountEl) return;
+        const safe = Number(count) || 0;
+        cartCountEl.textContent = safe;
       };
 
       const toast = (message) => {
@@ -543,15 +528,22 @@
         setTimeout(() => toastEl.classList.remove('show'), 1400);
       };
 
-      const addToCart = (id) => {
+      const addToCart = async (id) => {
         const item = catalog.find((p) => p.id === id);
         if (!item) return;
-        const existing = cart.find((p) => p.id === id);
-        if (existing) existing.qty += 1;
-        else cart.push({ id, name: item.name, price: item.price, qty: 1 });
-        saveCart();
-        updateCartBadge();
-        toast('Added to cart');
+        try {
+          const response = await fetch('/cart/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: item.id, name: item.name, price: item.price, qty: 1 })
+          });
+          if (!response.ok) throw new Error('cart');
+          const data = await response.json();
+          updateCartBadge(data.cartCount);
+          toast('Added to cart');
+        } catch (_err) {
+          toast('Unable to add to cart');
+        }
       };
 
       const filterProducts = () => {
@@ -646,7 +638,6 @@
         render();
       });
 
-      loadCart();
       render();
     </script>
   </body>

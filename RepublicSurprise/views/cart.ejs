@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cart | Republic Surprise</title>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=DM+Sans:wght@400;500&display=swap');
+      :root {
+        --bg: #f5f3ec;
+        --panel: #e0ddd4;
+        --card: #ffffff;
+        --ink: #0f172a;
+        --muted: #5f6570;
+        --accent: #f97316;
+        --line: rgba(0, 0, 0, 0.08);
+        --shadow: 0 18px 38px rgba(15, 23, 42, 0.16);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Space Grotesk", "DM Sans", "Segoe UI", Tahoma, sans-serif;
+        background:
+          radial-gradient(circle at 16% 12%, rgba(249, 189, 135, 0.35), transparent 36%),
+          radial-gradient(circle at 82% 16%, rgba(92, 112, 255, 0.18), transparent 32%),
+          var(--bg);
+        color: var(--ink);
+        min-height: 100vh;
+      }
+      .page { max-width: 1100px; margin: 0 auto; padding: 28px 18px 70px; }
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        background: var(--panel);
+        padding: 12px 14px;
+        border-radius: 16px;
+        border: 1px solid rgba(0,0,0,0.06);
+        box-shadow: 0 10px 22px rgba(0, 0, 0, 0.08);
+      }
+      .brand { font-weight: 700; letter-spacing: 0.5px; font-size: 1.05rem; }
+      .nav {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .nav a {
+        text-decoration: none;
+        color: var(--ink);
+        background: #fdfbf7;
+        border: 1px solid var(--line);
+        padding: 8px 12px;
+        border-radius: 12px;
+        font-weight: 700;
+      }
+      .layout { margin-top: 22px; display: grid; grid-template-columns: 1.3fr 0.7fr; gap: 18px; }
+      .panel {
+        background: var(--card);
+        border-radius: 18px;
+        border: 1px solid rgba(0, 0, 0, 0.06);
+        box-shadow: var(--shadow);
+        padding: 18px;
+      }
+      h1 { margin: 0 0 12px; font-size: 1.6rem; }
+      .item {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 12px;
+        padding: 12px 0;
+        border-bottom: 1px dashed var(--line);
+      }
+      .item:last-child { border-bottom: none; }
+      .item h3 { margin: 0 0 4px; font-size: 1rem; }
+      .meta { color: var(--muted); font-size: 0.92rem; margin: 0; }
+      .qty-form { display: inline-flex; align-items: center; gap: 8px; }
+      .qty-form input {
+        width: 70px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 8px;
+        text-align: center;
+        font-weight: 700;
+      }
+      .btn {
+        border: none;
+        background: var(--accent);
+        color: #0f172a;
+        padding: 8px 12px;
+        border-radius: 10px;
+        font-weight: 800;
+        cursor: pointer;
+      }
+      .btn.alt {
+        background: #f8f6f0;
+        border: 1px dashed var(--line);
+        font-weight: 700;
+      }
+      .summary-line {
+        display: flex;
+        justify-content: space-between;
+        margin: 8px 0;
+        color: var(--muted);
+      }
+      .summary-total {
+        font-size: 1.2rem;
+        font-weight: 800;
+        color: var(--ink);
+      }
+      .note { color: var(--muted); font-size: 0.92rem; margin-top: 12px; }
+      .checkout {
+        width: 100%;
+        padding: 12px 14px;
+        font-size: 1rem;
+        margin-top: 10px;
+        box-shadow: 0 12px 24px rgba(249, 115, 22, 0.35);
+      }
+      .empty {
+        text-align: center;
+        color: var(--muted);
+        padding: 18px;
+        border-radius: 14px;
+        border: 1px dashed var(--line);
+        background: #fdfbf7;
+      }
+      @media (max-width: 860px) {
+        .layout { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <header class="topbar">
+        <div class="brand">Republic Surprise</div>
+        <div class="nav">
+          <a href="/shopping">Continue shopping</a>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section class="panel">
+          <h1>Your cart</h1>
+          <% if (!cart || !cart.length) { %>
+            <div class="empty">
+              Your cart is empty. Add a surprise box from the shop.
+            </div>
+          <% } else { %>
+            <% cart.forEach(function(item) { %>
+              <div class="item">
+                <div>
+                  <h3><%= item.name %></h3>
+                  <p class="meta">$<%= Number(item.price || 0).toFixed(2) %> each</p>
+                </div>
+                <div>
+                  <form class="qty-form" method="post" action="/cart/update">
+                    <input type="hidden" name="id" value="<%= item.id %>" />
+                    <input type="number" name="qty" min="0" value="<%= item.qty %>" />
+                    <button class="btn alt" type="submit">Update</button>
+                  </form>
+                  <form method="post" action="/cart/remove/<%= item.id %>" style="margin-top: 6px;">
+                    <button class="btn alt" type="submit">Remove</button>
+                  </form>
+                </div>
+              </div>
+            <% }) %>
+          <% } %>
+        </section>
+
+        <aside class="panel">
+          <h1>Order summary</h1>
+          <div class="summary-line">
+            <span>Subtotal</span>
+            <span>$<%= Number(totals.subtotal || 0).toFixed(2) %></span>
+          </div>
+          <div class="summary-line">
+            <span>Shipping</span>
+            <span>$<%= Number(totals.shipping || 0).toFixed(2) %></span>
+          </div>
+          <div class="summary-line summary-total">
+            <span>Total</span>
+            <span>$<%= Number(totals.total || 0).toFixed(2) %></span>
+          </div>
+          <p class="note">Edit quantities or remove items before checkout.</p>
+        </aside>
+      </main>
+    </div>
+  </body>
+</html>
