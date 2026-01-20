@@ -1,0 +1,19 @@
+<header>
+  <div style="display:flex; align-items:center; justify-content: space-between; gap:12px;">
+    <h2 style="margin:0;">Republic Surprise</h2>
+    <% if (user) { %>
+      <form method="post" action="/logout" style="margin:0;">
+        <button type="submit" style="
+          background:#ff9f1c;
+          color:#0f172a;
+          border:none;
+          border-radius:10px;
+          padding:8px 12px;
+          font-weight:700;
+          cursor:pointer;
+          box-shadow:0 8px 16px rgba(255,159,28,0.25);
+        ">Logout</button>
+      </form>
+    <% } %>
+  </div>
+</header>

@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Welcome | Republic Surprise</title>
+    <style>
+      :root {
+        --bg: #fef6e4;
+        --card: #ffffff;
+        --accent: #ff9f1c;
+        --accent-2: #2ec4b6;
+        --text: #172b4d;
+        --muted: #5f6c7b;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Segoe UI", Tahoma, sans-serif;
+        background: radial-gradient(circle at 20% 20%, #ffd6a5 0, rgba(255,214,165,0) 32%), radial-gradient(circle at 80% 0%, #a0e8af 0, rgba(160,232,175,0) 32%), var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 72px 16px 64px;
+        text-align: center;
+      }
+      .card {
+        width: min(640px, 100%);
+        background: var(--card);
+        border: 1px solid rgba(0,0,0,0.04);
+        border-radius: 18px;
+        padding: 28px;
+        box-shadow: 0 18px 36px rgba(0,0,0,0.12);
+      }
+      h1 { margin: 0 0 10px; letter-spacing: 0.5px; }
+      p { margin: 0 0 20px; color: var(--muted); }
+      .actions {
+        display: flex;
+        gap: 12px;
+        justify-content: center;
+        flex-wrap: wrap;
+      }
+      a.button {
+        background: var(--accent);
+        color: #0f172a;
+        border: none;
+        border-radius: 12px;
+        padding: 12px 16px;
+        font-weight: 700;
+        cursor: pointer;
+        text-decoration: none;
+        transition: transform 0.15s ease, box-shadow 0.2s ease;
+      }
+      a.button:hover { transform: translateY(-2px); box-shadow: 0 12px 24px rgba(255,159,28,0.35); }
+      a.button.alt { background: var(--accent-2); color: #0b3b35; }
+      .flash {
+        padding: 10px 12px;
+        border-radius: 10px;
+        margin-bottom: 12px;
+        font-size: 0.95rem;
+        text-align: left;
+      }
+      .flash.error {
+        background: rgba(248, 113, 113, 0.15);
+        border: 1px solid rgba(248, 113, 113, 0.4);
+        color: #c81e1e;
+      }
+      .flash.success {
+        background: rgba(74, 222, 128, 0.15);
+        border: 1px solid rgba(74, 222, 128, 0.4);
+        color: #0f5132;
+      }
+      header, footer {
+        position: fixed;
+        left: 0;
+        right: 0;
+        padding: 14px 18px;
+        text-align: center;
+        background: rgba(255,255,255,0.7);
+        backdrop-filter: blur(6px);
+        color: var(--text);
+      }
+      header { top: 0; }
+      footer { bottom: 0; }
+      header h2, footer p { margin: 0; letter-spacing: 0.5px; }
+    </style>
+  </head>
+  <body>
+    <%- include('partials/header') %>
+    <div class="card">
+      <h1>Republic Surprise</h1>
+      <p>Browse our featured toys. You can register or log in to start buying.</p>
+      <% if (errorMessages && errorMessages.length) { %>
+        <% errorMessages.forEach(function(msg) { %>
+          <div class="flash error"><%= msg %></div>
+        <% }) %>
+      <% } %>
+      <% if (successMessages && successMessages.length) { %>
+        <% successMessages.forEach(function(msg) { %>
+          <div class="flash success"><%= msg %></div>
+        <% }) %>
+      <% } %>
+      <div class="actions">
+        <a class="button" href="/register">Go to Registration</a>
+        <a class="button alt" href="/login">Go to Login</a>
+      </div>
+    </div>
+    </div>
+    <%- include('partials/footer') %>
+  </body>
+</html>

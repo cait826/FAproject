@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Register | Republic Surprise</title>
+    <style>
+      :root {
+        --bg: #fef6e4;
+        --card: #ffffff;
+        --accent: #ff9f1c;
+        --accent-2: #2ec4b6;
+        --text: #172b4d;
+        --muted: #5f6c7b;
+        --error: #c81e1e;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Segoe UI", Tahoma, sans-serif;
+        background: radial-gradient(circle at 18% 18%, #ffd6a5 0, rgba(255,214,165,0) 32%), radial-gradient(circle at 78% 0%, #a0e8af 0, rgba(160,232,175,0) 32%), var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 72px 16px 64px;
+      }
+      .card {
+        width: min(520px, 100%);
+        background: var(--card);
+        border: 1px solid rgba(0,0,0,0.05);
+        border-radius: 16px;
+        padding: 24px;
+        box-shadow: 0 14px 30px rgba(0,0,0,0.12);
+      }
+      h1 { margin: 0 0 8px; letter-spacing: 0.5px; }
+      p { margin: 0 0 16px; color: var(--muted); }
+      form { display: grid; gap: 14px; }
+      label {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+      input, select {
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid rgba(0,0,0,0.08);
+        background: #fefaf2;
+        color: var(--text);
+      }
+      button {
+        background: var(--accent);
+        color: #0f172a;
+        border: none;
+        border-radius: 10px;
+        padding: 12px 14px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: transform 0.15s ease, box-shadow 0.2s ease;
+      }
+      button:hover { transform: translateY(-2px); box-shadow: 0 10px 22px rgba(251,191,36,0.35); }
+      button:disabled { opacity: 0.6; cursor: not-allowed; box-shadow: none; }
+      .status {
+        font-size: 0.9rem;
+        color: var(--muted);
+        min-height: 18px;
+      }
+      .status.error { color: var(--error); }
+      .flash {
+        padding: 10px 12px;
+        border-radius: 10px;
+        margin-bottom: 12px;
+        font-size: 0.95rem;
+      }
+      .flash.error {
+        background: rgba(248, 113, 113, 0.15);
+        border: 1px solid rgba(248, 113, 113, 0.4);
+        color: #c81e1e;
+      }
+      .flash.success {
+        background: rgba(74, 222, 128, 0.15);
+        border: 1px solid rgba(74, 222, 128, 0.4);
+        color: #bbf7d0;
+      }
+      header, footer {
+        position: fixed;
+        left: 0;
+        right: 0;
+        padding: 14px 18px;
+        text-align: center;
+        background: rgba(255,255,255,0.7);
+        backdrop-filter: blur(6px);
+        color: var(--text);
+      }
+      header { top: 0; }
+      footer { bottom: 0; }
+      header h2, footer p { margin: 0; letter-spacing: 0.5px; }
+    </style>
+  </head>
+  <body>
+    <%- include('partials/header') %>
+    <div class="card">
+      <h1>Create your account</h1>
+      <p>Fill in your details to register for Republic Surprise.</p>
+      <% if (errorMessages && errorMessages.length) { %>
+        <% errorMessages.forEach(function(msg) { %>
+          <div class="flash error"><%= msg %></div>
+        <% }) %>
+      <% } %>
+      <% if (successMessages && successMessages.length) { %>
+        <% successMessages.forEach(function(msg) { %>
+          <div class="flash success"><%= msg %></div>
+        <% }) %>
+      <% } %>
+      <form id="registrationForm" method="post" action="/register">
+        <label>
+          Full name
+          <input type="text" name="name" required placeholder="Jane Doe" />
+        </label>
+        <label>
+          Email
+          <input type="email" name="email" required placeholder="you@example.com" />
+        </label>
+        <label>
+          Password (min 6 characters)
+          <input type="password" name="password" minlength="6" required placeholder="******" />
+        </label>
+        <label>
+          Address
+          <input type="text" name="address" required placeholder="123 Toy Street" />
+        </label>
+        <label>
+          Contact number
+          <input type="tel" name="contact" required pattern="^[0-9+\\-\\s]{7,}$" placeholder="+65 8123 4567" />
+        </label>
+        <label>
+          Role
+          <select name="role" required>
+            <option value="">Select a role</option>
+            <option value="user">User</option>
+            <option value="admin">Admin</option>
+            <option value="delivery man">Delivery man</option>
+          </select>
+        </label>
+        <button type="submit">Register</button>
+        <div class="status" id="status"></div>
+      </form>
+    </div>
+    <%- include('partials/footer') %>
+    <script>
+      const form = document.getElementById('registrationForm');
+      const statusEl = document.getElementById('status');
+
+      form.addEventListener('submit', (e) => {
+        const password = form.password.value || '';
+        if (password.length < 6) {
+          e.preventDefault();
+          statusEl.textContent = 'Password must be at least 6 characters.';
+          statusEl.className = 'status error';
+        } else {
+          statusEl.textContent = '';
+          statusEl.className = 'status';
+        }
+      });
+    </script>
+  </body>
+</html>
