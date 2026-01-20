@@ -2,11 +2,15 @@ const express = require('express');
 const path = require('path');
 const session = require('express-session');
 const flash = require('connect-flash');
+const multer = require('multer');
 
 const app = express();
 const PORT = 3000;
 
 const users = {}; // simple in-memory user store for demo
+const products = [];
+let lastProductId = null;
+const upload = multer({ storage: multer.memoryStorage(), limits: { files: 3 } });
 
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
@@ -129,6 +133,112 @@ app.get('/delivery/dashboard', allowRoles(['delivery man']), (req, res) => {
   res.render('delivery-home');
 });
 
+app.get('/admin/add-product', allowRoles(['admin']), (req, res) => {
+  res.render('admin-add-product');
+});
+
+const buildProductPayload = (body) => ({
+  productName: body.productName || '',
+  productDescription: body.productDescription || '',
+  mainImageIndex: body.mainImageIndex || '1',
+  enableIndividual: !!body.enableIndividual,
+  enableSet: !!body.enableSet,
+  individualPrice: body.individualPrice || '',
+  individualStock: body.individualStock || '',
+  individualMax: body.individualMax || '',
+  setBoxes: body.setBoxes || '',
+  setPrice: body.setPrice || '',
+  setStock: body.setStock || ''
+});
+
+const createProduct = (body) => ({
+  id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+  createdAt: new Date(),
+  ...buildProductPayload(body)
+});
+
+const validateProductPayload = (body, files) => {
+  const errors = [];
+  const enableIndividual = !!body.enableIndividual;
+  const enableSet = !!body.enableSet;
+
+  if (!files || files.length < 1) errors.push('At least 1 product image is required.');
+  if (!body.productName) errors.push('Product name is required.');
+  if (!body.productDescription) errors.push('Product description is required.');
+  if (!enableIndividual && !enableSet) errors.push('Select at least one blind box purchase type.');
+
+  if (enableIndividual) {
+    if (!body.individualPrice) errors.push('Price per box is required.');
+    if (!body.individualStock) errors.push('Individual stock quantity is required.');
+    if (!body.individualMax) errors.push('Max quantity per order is required.');
+  }
+
+  if (enableSet) {
+    if (!body.setBoxes) errors.push('Number of boxes per set is required.');
+    if (!body.setPrice) errors.push('Set price is required.');
+    if (!body.setStock) errors.push('Set stock quantity is required.');
+  }
+
+  return errors;
+};
+
+app.post('/admin/add-product', allowRoles(['admin']), upload.array('images', 3), (req, res) => {
+  const errors = validateProductPayload(req.body, req.files);
+  if (errors.length) {
+    errors.forEach((msg) => req.flash('error', msg));
+    return res.redirect('/admin/add-product');
+  }
+  const newProduct = createProduct(req.body);
+  products.push(newProduct);
+  lastProductId = newProduct.id;
+  req.flash('success', 'Product saved (demo only).');
+  res.redirect('/admin/add-product');
+});
+
+app.get('/admin/update-product', allowRoles(['admin']), (req, res) => {
+  const targetId = req.query.id || lastProductId;
+  const product = products.find((item) => item.id === targetId) || buildProductPayload({});
+  res.render('admin-update-product', { product, hasProduct: products.length > 0, productId: targetId || '' });
+});
+
+app.post('/admin/update-product', allowRoles(['admin']), upload.array('images', 3), (req, res) => {
+  const targetId = req.query.id || lastProductId;
+  const errors = validateProductPayload(req.body, req.files);
+  if (errors.length) {
+    errors.forEach((msg) => req.flash('error', msg));
+    return res.redirect(`/admin/update-product${targetId ? `?id=${targetId}` : ''}`);
+  }
+  const nextPayload = buildProductPayload(req.body);
+  const existingIndex = products.findIndex((item) => item.id === targetId);
+  if (existingIndex >= 0) {
+    products[existingIndex] = { ...products[existingIndex], ...nextPayload };
+    lastProductId = products[existingIndex].id;
+  } else {
+    const created = createProduct(req.body);
+    products.push(created);
+    lastProductId = created.id;
+  }
+  req.flash('success', 'Product updated (demo only).');
+  res.redirect(`/admin/update-product${targetId ? `?id=${targetId}` : ''}`);
+});
+
+app.get('/admin/inventory', allowRoles(['admin']), (req, res) => {
+  res.render('admin-inventory', { products });
+});
+
+app.post('/admin/delete-product/:id', allowRoles(['admin']), (req, res) => {
+  const { id } = req.params;
+  const index = products.findIndex((item) => item.id === id);
+  if (index >= 0) {
+    products.splice(index, 1);
+    if (lastProductId === id) lastProductId = products.length ? products[products.length - 1].id : null;
+    req.flash('success', 'Product deleted (demo only).');
+  } else {
+    req.flash('error', 'Product not found.');
+  }
+  res.redirect('/admin/inventory');
+});
+
 const protectedRoutes = [
   { path: '/mainpage', roles: ['user'], title: 'Main Page' },
   { path: '/shopping', roles: ['user'], title: 'Shopping Page' },
@@ -137,8 +247,6 @@ const protectedRoutes = [
   { path: '/cart', roles: ['user'], title: 'Cart Page' },
   { path: '/payment', roles: ['user'], title: 'Payment Page' },
   { path: '/invoice', roles: ['user'], title: 'Invoice Page' },
-  { path: '/admin/add-product', roles: ['admin'], title: 'Add Product' },
-  { path: '/admin/update-product', roles: ['admin'], title: 'Update Product' },
   { path: '/delivery/add-status', roles: ['delivery man'], title: 'Add Delivery Status' },
   { path: '/delivery/update-status', roles: ['delivery man'], title: 'Update Delivery Status' }
 ];

@@ -56,6 +56,7 @@
       }
       a.button:hover { transform: translateY(-2px); box-shadow: 0 12px 24px rgba(255,159,28,0.35); }
       a.button.alt { background: var(--accent-2); color: #0b3b35; }
+      a.button.inventory { background: #3b82f6; color: #0b1b38; }
       header, footer {
         position: fixed;
         left: 0;
@@ -77,8 +78,8 @@
       <h1>Admin Dashboard</h1>
       <p>Welcome, admin. Manage products and oversee store operations.</p>
       <div class="links">
+        <a class="button inventory" href="/admin/inventory">View Inventory</a>
         <a class="button" href="/admin/add-product">Add Product</a>
-        <a class="button alt" href="/admin/update-product">Update Product</a>
       </div>
     </div>
     <%- include('partials/footer') %>

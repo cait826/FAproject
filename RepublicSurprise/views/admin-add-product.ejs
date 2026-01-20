@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Add Product | Republic Surprise</title>
+    <style>
+      :root {
+        --bg: #f8f4ec;
+        --ink: #1f2937;
+        --muted: #6b7280;
+        --card: #ffffff;
+        --accent: #ff6b35;
+        --accent-2: #005f73;
+        --accent-3: #f4d35e;
+        --shadow: 0 22px 50px rgba(15, 23, 42, 0.15);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Palatino Linotype", "Book Antiqua", Palatino, serif;
+        background:
+          radial-gradient(circle at 15% 20%, rgba(244, 211, 94, 0.45), transparent 50%),
+          radial-gradient(circle at 85% 5%, rgba(0, 95, 115, 0.2), transparent 40%),
+          linear-gradient(180deg, #fffaf0 0%, #f7f1e6 55%, #f2efe6 100%);
+        color: var(--ink);
+        min-height: 100vh;
+        padding: 132px 16px 96px;
+      }
+      .layout {
+        max-width: 980px;
+        margin: 0 auto;
+        display: grid;
+        gap: 22px;
+      }
+      .title-card {
+        background: var(--card);
+        border-radius: 18px;
+        padding: 24px 26px;
+        box-shadow: var(--shadow);
+        border: 1px solid rgba(0, 0, 0, 0.06);
+      }
+      h1 {
+        margin: 0 0 6px;
+        letter-spacing: 0.5px;
+        font-size: clamp(1.6rem, 2vw, 2.1rem);
+      }
+      p { margin: 0; color: var(--muted); }
+      .product-form {
+        background: var(--card);
+        border-radius: 22px;
+        padding: 26px;
+        box-shadow: var(--shadow);
+        border: 1px solid rgba(0, 0, 0, 0.06);
+      }
+      .grid {
+        display: grid;
+        gap: 18px;
+      }
+      .two-col {
+        display: grid;
+        gap: 18px;
+        grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      }
+      label {
+        font-weight: 600;
+        display: block;
+        margin-bottom: 6px;
+      }
+      input[type="text"],
+      input[type="number"],
+      textarea {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 12px;
+        border: 1px solid rgba(0, 0, 0, 0.15);
+        font-size: 1rem;
+        font-family: inherit;
+      }
+      textarea { min-height: 110px; resize: vertical; }
+      .hint { color: var(--muted); font-size: 0.9rem; margin-top: 4px; }
+      .fieldset {
+        border: 1px dashed rgba(0, 0, 0, 0.2);
+        border-radius: 16px;
+        padding: 18px;
+        background: rgba(244, 211, 94, 0.12);
+      }
+      .fieldset h3 {
+        margin: 0 0 6px;
+        font-size: 1.1rem;
+      }
+      .toggle-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 600;
+      }
+      .toggle-row input { transform: scale(1.15); }
+      .image-grid {
+        display: grid;
+        gap: 12px;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      }
+      .image-card {
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        border-radius: 14px;
+        padding: 12px;
+        background: #fff;
+      }
+      .image-card input[type="file"] {
+        width: 100%;
+      }
+      .radio-row {
+        margin-top: 8px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.95rem;
+      }
+      .hidden { display: none; }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 8px;
+      }
+      button {
+        border: none;
+        border-radius: 12px;
+        padding: 12px 18px;
+        font-weight: 700;
+        font-size: 1rem;
+        cursor: pointer;
+      }
+      .primary {
+        background: var(--accent);
+        color: #1b0f0a;
+        box-shadow: 0 14px 26px rgba(255, 107, 53, 0.3);
+      }
+      .ghost {
+        background: transparent;
+        border: 1px solid rgba(0, 0, 0, 0.25);
+        color: var(--ink);
+      }
+      .flash {
+        padding: 10px 14px;
+        border-radius: 12px;
+        margin: 6px 0 12px;
+      }
+      .flash.error {
+        background: #ffe5e5;
+        color: #7a1f1f;
+        border: 1px solid #f3b7b7;
+      }
+      .flash.success {
+        background: #e7f8f3;
+        color: #0f3d3a;
+        border: 1px solid #b6e6db;
+      }
+      header, footer {
+        position: fixed;
+        left: 0;
+        right: 0;
+        padding: 14px 18px;
+        text-align: center;
+        background: rgba(255,255,255,0.7);
+        backdrop-filter: blur(6px);
+        color: var(--ink);
+        z-index: 5;
+      }
+      header { top: 0; }
+      footer { bottom: 0; }
+      .back-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        display: inline-flex;
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.9);
+        color: var(--ink);
+        text-decoration: none;
+        font-weight: 700;
+        box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12);
+      }
+      .top-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 18px;
+      }
+      .back-link span {
+        font-size: 1.1rem;
+        line-height: 1;
+      }
+      header h2, footer p { margin: 0; letter-spacing: 0.5px; }
+    </style>
+  </head>
+  <body>
+    <%- include('partials/header') %>
+    <main class="layout">
+      <div class="top-row">
+        <a class="back-link" href="/admin/dashboard"><span>&larr;</span> Back</a>
+      </div>
+      <section class="title-card">
+        <h1>Add New Blind Box Product</h1>
+      </section>
+
+      <form class="product-form" action="/admin/add-product" method="post" enctype="multipart/form-data">
+        <% if (errorMessages && errorMessages.length) { %>
+          <% errorMessages.forEach(function(msg) { %>
+            <div class="flash error"><%= msg %></div>
+          <% }) %>
+        <% } %>
+        <% if (successMessages && successMessages.length) { %>
+          <% successMessages.forEach(function(msg) { %>
+            <div class="flash success"><%= msg %></div>
+          <% }) %>
+        <% } %>
+
+        <div class="grid">
+          <div>
+            <label>Product Images (max 3)</label>
+            <div class="image-grid">
+              <div class="image-card">
+                <label for="image1">Image 1</label>
+                <input type="file" id="image1" name="images" accept="image/*" />
+                <div class="radio-row">
+                  <input type="radio" name="mainImageIndex" id="main1" value="1" checked />
+                  <label for="main1">Main image</label>
+                </div>
+              </div>
+              <div class="image-card">
+                <label for="image2">Image 2</label>
+                <input type="file" id="image2" name="images" accept="image/*" />
+                <div class="radio-row">
+                  <input type="radio" name="mainImageIndex" id="main2" value="2" />
+                  <label for="main2">Main image</label>
+                </div>
+              </div>
+              <div class="image-card">
+                <label for="image3">Image 3</label>
+                <input type="file" id="image3" name="images" accept="image/*" />
+                <div class="radio-row">
+                  <input type="radio" name="mainImageIndex" id="main3" value="3" />
+                  <label for="main3">Main image</label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="two-col">
+            <div>
+              <label for="productName">Product Name</label>
+              <input id="productName" name="productName" type="text" placeholder="Series name" required />
+            </div>
+            <div>
+              <label for="productDescription">Product Description</label>
+              <textarea id="productDescription" name="productDescription" placeholder="Highlight the blind box theme"></textarea>
+            </div>
+          </div>
+
+          <div class="fieldset">
+            <h3>Blind Box Configuration</h3>
+            <p class="hint">Enable one or both purchase types.</p>
+            <div class="two-col">
+              <label class="toggle-row">
+                <input type="checkbox" id="enableIndividual" name="enableIndividual" />
+                Enable Individual Blind Box
+              </label>
+              <label class="toggle-row">
+                <input type="checkbox" id="enableSet" name="enableSet" />
+                Enable Full Set
+              </label>
+            </div>
+          </div>
+
+          <div class="fieldset hidden" id="individualSection">
+            <h3>Individual Blind Box Settings</h3>
+            <div class="two-col">
+              <div>
+                <label for="individualPrice">Price per box ($)</label>
+                <input id="individualPrice" name="individualPrice" type="number" min="0" step="0.01" />
+              </div>
+              <div>
+                <label for="individualStock">Stock quantity (individual)</label>
+                <input id="individualStock" name="individualStock" type="number" min="0" step="1" />
+              </div>
+              <div>
+                <label for="individualMax">Max quantity per order</label>
+                <input id="individualMax" name="individualMax" type="number" min="1" step="1" />
+              </div>
+            </div>
+          </div>
+
+          <div class="fieldset hidden" id="setSection">
+            <h3>Full Set Settings</h3>
+            <p class="hint">Set stock is independent from individual stock.</p>
+            <div class="two-col">
+              <div>
+                <label for="setBoxes">Number of boxes in 1 set</label>
+                <input id="setBoxes" name="setBoxes" type="number" min="1" step="1" />
+              </div>
+              <div>
+                <label for="setPrice">Set price ($)</label>
+                <input id="setPrice" name="setPrice" type="number" min="0" step="0.01" />
+              </div>
+              <div>
+                <label for="setStock">Stock quantity (set)</label>
+                <input id="setStock" name="setStock" type="number" min="0" step="1" />
+              </div>
+            </div>
+          </div>
+
+          <div class="actions">
+            <button class="primary" type="submit">Add Product</button>
+            <button class="ghost" type="reset">Clear Form</button>
+          </div>
+        </div>
+      </form>
+    </main>
+    <%- include('partials/footer') %>
+
+    <script>
+      const enableIndividual = document.getElementById('enableIndividual');
+      const enableSet = document.getElementById('enableSet');
+      const individualSection = document.getElementById('individualSection');
+      const setSection = document.getElementById('setSection');
+
+      const toggleSections = () => {
+        individualSection.classList.toggle('hidden', !enableIndividual.checked);
+        setSection.classList.toggle('hidden', !enableSet.checked);
+      };
+
+      enableIndividual.addEventListener('change', toggleSections);
+      enableSet.addEventListener('change', toggleSections);
+      toggleSections();
+    </script>
+  </body>
+</html>

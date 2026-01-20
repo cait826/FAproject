@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>View Inventory | Republic Surprise</title>
+    <style>
+      :root {
+        --bg: #f8f4ec;
+        --ink: #1f2937;
+        --muted: #6b7280;
+        --card: #ffffff;
+        --accent: #ff6b35;
+        --accent-2: #005f73;
+        --shadow: 0 22px 50px rgba(15, 23, 42, 0.15);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Palatino Linotype", "Book Antiqua", Palatino, serif;
+        background:
+          radial-gradient(circle at 15% 20%, rgba(244, 211, 94, 0.45), transparent 50%),
+          radial-gradient(circle at 85% 5%, rgba(0, 95, 115, 0.2), transparent 40%),
+          linear-gradient(180deg, #fffaf0 0%, #f7f1e6 55%, #f2efe6 100%);
+        color: var(--ink);
+        min-height: 100vh;
+        padding: 132px 16px 96px;
+      }
+      header, footer {
+        position: fixed;
+        left: 0;
+        right: 0;
+        padding: 14px 18px;
+        text-align: center;
+        background: rgba(255,255,255,0.7);
+        backdrop-filter: blur(6px);
+        color: var(--ink);
+        z-index: 5;
+      }
+      header { top: 0; }
+      footer { bottom: 0; }
+      header h2, footer p { margin: 0; letter-spacing: 0.5px; }
+      .back-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.9);
+        color: var(--ink);
+        text-decoration: none;
+        font-weight: 700;
+        box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12);
+      }
+      .top-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 18px;
+      }
+      .back-link span {
+        font-size: 1.1rem;
+        line-height: 1;
+      }
+      .layout {
+        max-width: 1100px;
+        margin: 0 auto;
+        display: grid;
+        gap: 20px;
+      }
+      .title-card {
+        background: var(--card);
+        border-radius: 18px;
+        padding: 24px 26px;
+        box-shadow: var(--shadow);
+        border: 1px solid rgba(0, 0, 0, 0.06);
+      }
+      h1 {
+        margin: 0 0 6px;
+        letter-spacing: 0.5px;
+        font-size: clamp(1.6rem, 2vw, 2.1rem);
+      }
+      p { margin: 0; color: var(--muted); }
+      .table-card {
+        background: var(--card);
+        border-radius: 18px;
+        padding: 18px;
+        box-shadow: var(--shadow);
+        border: 1px solid rgba(0, 0, 0, 0.06);
+        overflow-x: auto;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 780px;
+      }
+      th, td {
+        text-align: left;
+        padding: 12px 10px;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+        vertical-align: top;
+      }
+      th {
+        font-size: 0.92rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+      }
+      .actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 8px 12px;
+        border-radius: 10px;
+        font-weight: 700;
+        font-size: 0.95rem;
+        text-decoration: none;
+        border: none;
+        cursor: pointer;
+      }
+      .btn.edit {
+        background: var(--accent-2);
+        color: #e8f7f7;
+      }
+      .btn.delete {
+        background: #ef4444;
+        color: #fff;
+      }
+      .flash {
+        padding: 10px 14px;
+        border-radius: 12px;
+        margin: 6px 0 12px;
+      }
+      .flash.error {
+        background: #ffe5e5;
+        color: #7a1f1f;
+        border: 1px solid #f3b7b7;
+      }
+      .flash.success {
+        background: #e7f8f3;
+        color: #0f3d3a;
+        border: 1px solid #b6e6db;
+      }
+      .empty {
+        padding: 24px;
+        text-align: center;
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <%- include('partials/header') %>
+    <main class="layout">
+      <div class="top-row">
+        <a class="back-link" href="/admin/dashboard"><span>&larr;</span> Back</a>
+      </div>
+      <section class="title-card">
+        <h1>Inventory</h1>
+        <p>Manage all products added by admins.</p>
+      </section>
+
+      <section class="table-card">
+        <% if (errorMessages && errorMessages.length) { %>
+          <% errorMessages.forEach(function(msg) { %>
+            <div class="flash error"><%= msg %></div>
+          <% }) %>
+        <% } %>
+        <% if (successMessages && successMessages.length) { %>
+          <% successMessages.forEach(function(msg) { %>
+            <div class="flash success"><%= msg %></div>
+          <% }) %>
+        <% } %>
+
+        <% if (!products || products.length === 0) { %>
+          <div class="empty">No products added yet.</div>
+        <% } else { %>
+          <table>
+            <thead>
+              <tr>
+                <th>Product Name</th>
+                <th>Description</th>
+                <th>Purchase Types</th>
+                <th>Individual</th>
+                <th>Full Set</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% products.forEach(function(product) { %>
+                <tr>
+                  <td><%= product.productName %></td>
+                  <td><%= product.productDescription %></td>
+                  <td>
+                    <%= product.enableIndividual ? 'Individual' : '' %>
+                    <%= product.enableIndividual && product.enableSet ? ' + ' : '' %>
+                    <%= product.enableSet ? 'Full Set' : '' %>
+                  </td>
+                  <td>
+                    <% if (product.enableIndividual) { %>
+                      $<%= product.individualPrice %> / Stock: <%= product.individualStock %> / Max: <%= product.individualMax %>
+                    <% } else { %>
+                      -
+                    <% } %>
+                  </td>
+                  <td>
+                    <% if (product.enableSet) { %>
+                      <%= product.setBoxes %> boxes / $<%= product.setPrice %> / Stock: <%= product.setStock %>
+                    <% } else { %>
+                      -
+                    <% } %>
+                  </td>
+                  <td>
+                    <div class="actions">
+                      <a class="btn edit" href="/admin/update-product?id=<%= product.id %>">Edit</a>
+                      <form method="post" action="/admin/delete-product/<%= product.id %>" style="margin:0;">
+                        <button class="btn delete" type="submit">Delete</button>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        <% } %>
+      </section>
+    </main>
+    <%- include('partials/footer') %>
+  </body>
+</html>
