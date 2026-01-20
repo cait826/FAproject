@@ -465,21 +465,21 @@
     <script>
       const serverProducts = <%- JSON.stringify(products || []) %>;
       const demoProducts = [
-        { id: 'lolo', name: 'Lolo the Piggy', price: 49.9, stock: 8, badge: 'Set of 3', image: 'https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?auto=format&fit=crop&w=600&q=80' },
-        { id: 'pino', name: 'Pino JoJo', price: 37.9, stock: 5, badge: 'Single box', image: 'https://images.unsplash.com/photo-1600891964092-4316c288032e?auto=format&fit=crop&w=600&q=80' },
-        { id: 'himo', name: 'Hinono', price: 61.9, stock: 0, badge: 'Collector set', image: 'https://images.unsplash.com/photo-1526498460520-4c246339dccb?auto=format&fit=crop&w=600&q=80' },
-        { id: 'zimma', name: 'Zimma', price: 37.9, stock: 3, badge: 'Single box', image: 'https://images.unsplash.com/photo-1617033228438-9c2132f1f403?auto=format&fit=crop&w=600&q=80' },
-        { id: 'sweet-bun', name: 'Sweet Bun', price: 20.9, stock: 12, badge: 'Single box', image: 'https://images.unsplash.com/photo-1520607162513-77705c0f0d4a?auto=format&fit=crop&w=600&q=80' },
-        { id: 'hachibuku', name: 'Hachibubu', price: 38.8, stock: 7, badge: 'Limited', image: 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=600&q=80' }
+        { id: 'lolo', name: 'Lolo the Piggy', price: 49.9, stock: 8, badge: 'Set of 3', image: '/images/lolo_the_piggy.png' },
+        { id: 'pino', name: 'Pino JoJo', price: 37.9, stock: 5, badge: 'Single box', image: '/images/pino_jojo.png' },
+        { id: 'hinono', name: 'Hinono', price: 61.9, stock: 0, badge: 'Collector set', image: '/images/hinono.png' },
+        { id: 'zimama', name: 'Zimama', price: 37.9, stock: 3, badge: 'Single box', image: '/images/zimama.png' },
+        { id: 'sweet-bun', name: 'Sweet Bun', price: 20.9, stock: 12, badge: 'Single box', image: '/images/sweet_bun.png' },
+        { id: 'hacibubu', name: 'Hacibubu', price: 38.8, stock: 7, badge: 'Limited', image: '/images/hacibubu.png' }
       ];
 
       const fallbackImages = [
-        'https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?auto=format&fit=crop&w=600&q=80',
-        'https://images.unsplash.com/photo-1600891964092-4316c288032e?auto=format&fit=crop&w=600&q=80',
-        'https://images.unsplash.com/photo-1526498460520-4c246339dccb?auto=format&fit=crop&w=600&q=80',
-        'https://images.unsplash.com/photo-1617033228438-9c2132f1f403?auto=format&fit=crop&w=600&q=80',
-        'https://images.unsplash.com/photo-1520607162513-77705c0f0d4a?auto=format&fit=crop&w=600&q=80',
-        'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=600&q=80'
+        '/images/lolo_the_piggy.png',
+        '/images/pino_jojo.png',
+        '/images/hinono.png',
+        '/images/zimama.png',
+        '/images/sweet_bun.png',
+        '/images/hacibubu.png'
       ];
 
       const normalizeProducts = (list) => {
@@ -575,6 +575,7 @@
         gridEl.innerHTML = items
           .map((item) => {
             const available = item.stock > 0;
+            const viewHref = '/product?id=' + encodeURIComponent(item.id);
             return `
               <article class="card">
                 <div class="image">
@@ -592,7 +593,7 @@
                     ${available ? 'In stock' : 'Out of stock'}
                   </div>
                   <div class="card-actions">
-                    <button class="ghost-btn" type="button">View</button>
+                    <a class="ghost-btn" href="${viewHref}">View</a>
                     <button class="add-btn" type="button" data-add="${item.id}" ${available ? '' : 'disabled'} aria-label="Add ${item.name} to cart">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
                         <circle cx="9" cy="21" r="1"></circle>

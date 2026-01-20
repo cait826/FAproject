@@ -25,6 +25,7 @@ app.use(
   })
 );
 app.use(flash());
+app.use(express.static(path.join(__dirname, 'public')));
 
 app.use((req, res, next) => {
   res.locals.errorMessages = req.flash('error');
@@ -243,9 +244,58 @@ app.get('/shopping', allowRoles(['user']), (_req, res) => {
   res.render('user-shopping', { products });
 });
 
+app.get('/product', allowRoles(['user']), (req, res) => {
+  const fallbackImages = [
+    '/images/lolo_the_piggy.png',
+    '/images/pino_jojo.png',
+    '/images/hinono.png',
+    '/images/zimama.png',
+    '/images/sweet_bun.png',
+    '/images/hacibubu.png'
+  ];
+
+  const demoProducts = [
+    { id: 'lolo', productName: 'Lolo the Piggy', productDescription: 'A cheerful trio of piggy.', enableSet: true, enableIndividual: true, setPrice: 49.9, setStock: 8 },
+    { id: 'pino', productName: 'Pino JoJo', productDescription: 'Dreamy pastel friend.', enableIndividual: true, individualPrice: 37.9, individualStock: 5 },
+    { id: 'hinono', productName: 'Hinono', productDescription: 'Collector set of mystical figures.', enableSet: true, setPrice: 61.9, setStock: 0 },
+    { id: 'zimama', productName: 'Zimama', productDescription: 'Forest critter guardian.', enableIndividual: true, individualPrice: 37.9, individualStock: 3 },
+    { id: 'sweet-bun', productName: 'Sweet Bun', productDescription: 'Fluffy friend for cozy nights.', enableIndividual: true, individualPrice: 20.9, individualStock: 12 },
+    { id: 'hacibubu', productName: 'Hacibubu', productDescription: 'Limited run surprise.', enableIndividual: true, individualPrice: 38.8, individualStock: 7 }
+  ];
+
+  const normalizeProducts = (list, offset = 0) =>
+    list.map((item, index) => {
+      const price = Number(item.individualPrice || item.setPrice || 0) || 0;
+      const stock = Number(item.individualStock || item.setStock || 0) || 0;
+      const badge =
+        item.enableSet && item.enableIndividual
+          ? 'Single & Set'
+          : item.enableSet
+          ? 'Set'
+          : 'Single box';
+      const imageIndex = (offset + index) % fallbackImages.length;
+      return {
+        id: item.id || `product-${index}`,
+        name: item.productName || 'Mystery figure',
+        description: item.productDescription || 'Blind box collectible',
+        price,
+        stock,
+        badge,
+        image: item.image || fallbackImages[imageIndex]
+      };
+    });
+
+  const serverCatalog = normalizeProducts(products, 0);
+  const demoCatalog = normalizeProducts(demoProducts, products.length);
+  const catalog = serverCatalog.length ? [...serverCatalog, ...demoCatalog] : demoCatalog;
+  const targetId = req.query.id;
+  const selected = targetId ? catalog.find((item) => item.id === targetId) : catalog[0] || null;
+
+  res.render('user-product', { product: selected || null, catalog });
+});
+
 const protectedRoutes = [
   { path: '/mainpage', roles: ['user'], title: 'Main Page' },
-  { path: '/product', roles: ['user'], title: 'Product Page' },
   { path: '/order-tracking', roles: ['user'], title: 'Order Tracking' },
   { path: '/cart', roles: ['user'], title: 'Cart Page' },
   { path: '/payment', roles: ['user'], title: 'Payment Page' },
