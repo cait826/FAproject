@@ -1,0 +1,98 @@
+<%- include('partials/header') %>
+
+<style>
+  :root{ --bg:#f6f2ea; --card:#fff; --accent:#f97316; --muted:#6b7280; --shadow:0 12px 30px rgba(2,6,23,0.06); --radius:16px }
+  body{ background:var(--bg) }
+  .wrap{ max-width:960px; margin:28px auto; padding:18px; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial; color:#0f172a }
+  .card{ background:var(--card); border-radius:var(--radius); padding:18px; box-shadow:var(--shadow); border:1px solid rgba(0,0,0,0.04) }
+  h2{ margin:0 0 6px }
+  .muted{ color:var(--muted) }
+  .grid{ display:grid; grid-template-columns: 1fr 1fr; gap:18px }
+  .step{ display:flex; gap:12px; padding:10px 0; border-bottom:1px solid #f1efe9 }
+  .dot{ width:14px; height:14px; border-radius:50%; background:#fde7d3; border:2px solid var(--accent); margin-top:4px }
+  .status{ font-weight:700 }
+  table{ width:100%; border-collapse:collapse; margin-top:10px }
+  th,td{ padding:10px 8px; border-bottom:1px solid #f1efe9; text-align:left }
+  .btn{ background:var(--accent); color:#071; border:none; padding:10px 14px; border-radius:12px; font-weight:800; cursor:pointer; text-decoration:none; display:inline-block }
+  .warn{ background:#fff3f2; border:1px solid rgba(176,11,11,0.08); padding:12px; border-radius:12px; color:#7b1d12 }
+  @media (max-width: 720px){ .grid{ grid-template-columns: 1fr; } }
+</style>
+
+<div class="wrap">
+  <div id="no-tracking" style="display:none">
+    <div class="card warn">
+      <div style="font-weight:800">No tracking data available.</div>
+      <div class="muted">Complete a payment first to generate tracking.</div>
+      <a class="btn" href="/payment" style="margin-top:10px;text-decoration:none">Go to Payment</a>
+    </div>
+  </div>
+
+  <div id="tracking-card" class="card" style="display:none">
+    <h2>Order Tracking</h2>
+    <div class="muted" style="margin-bottom:10px">Track your Republic Surprise delivery status.</div>
+
+    <div class="grid">
+      <div>
+        <div><strong>Order ID:</strong> <span id="order-id"></span></div>
+        <div><strong>Invoice ID:</strong> <span id="invoice-id"></span></div>
+        <div><strong>Placed:</strong> <span id="placed-at"></span></div>
+
+        <div style="margin-top:14px">
+          <div style="font-weight:700">Status</div>
+          <div id="status-list"></div>
+        </div>
+      </div>
+
+      <div>
+        <div style="font-weight:700">Items</div>
+        <table aria-label="Order items">
+          <thead><tr><th>Item</th><th style="text-align:center">Qty</th><th style="text-align:right">Unit</th></tr></thead>
+          <tbody id="items"></tbody>
+        </table>
+        <div style="margin-top:12px">
+          <a href="/cart" class="btn" style="text-decoration:none">Back to Shop</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const TRACKING_KEY = 'ORDER_TRACKING_DATA';
+  const $ = id => document.getElementById(id);
+  function fmt(n){ return Number(n).toFixed(6) + ' ETH'; }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const raw = sessionStorage.getItem(TRACKING_KEY);
+    if (!raw) { $('no-tracking').style.display = 'block'; return; }
+    let data = null;
+    try { data = JSON.parse(raw); } catch (e) { $('no-tracking').style.display = 'block'; return; }
+
+    $('order-id').textContent = data.orderId || '';
+    $('invoice-id').textContent = data.invoiceId || '';
+    $('placed-at').textContent = data.placedAt || '';
+
+    const statusList = $('status-list');
+    statusList.innerHTML = '';
+    (data.statusHistory || []).forEach(step => {
+      const row = document.createElement('div');
+      row.className = 'step';
+      row.innerHTML = '<div class="dot"></div><div><div class="status">' + (step.label || '') + '</div><div class="muted">' + (step.time || '') + '</div></div>';
+      statusList.appendChild(row);
+    });
+
+    const items = $('items');
+    items.innerHTML = '';
+    (data.items || []).forEach(it => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td>' + (it.name || '') + '</td><td style="text-align:center">' + (it.qty || 0) + '</td><td style="text-align:right">' + fmt(it.price || 0) + '</td>';
+      items.appendChild(tr);
+    });
+
+    $('tracking-card').style.display = 'block';
+  });
+})();
+</script>
+
+<%- include('partials/footer') %>

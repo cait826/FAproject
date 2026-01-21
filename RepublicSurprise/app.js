@@ -454,6 +454,7 @@ app.get('/invoice', (req, res) => {
   res.render('invoice');
 });
 
+<<<<<<< HEAD
 app.post('/cart/add', (req, res) => {
   if (!req.session.user || req.session.user.role !== 'user') {
     if (req.headers.accept && req.headers.accept.includes('application/json')) {
@@ -463,6 +464,13 @@ app.post('/cart/add', (req, res) => {
     return res.redirect('/login');
   }
 
+=======
+app.get('/order-tracking', allowRoles(['user']), (req, res) => {
+  res.render('order-tracking');
+});
+
+app.post('/cart/add', allowRoles(['user']), (req, res) => {
+>>>>>>> 584df3696747b83fdd44b625cc1cb83e25dc48ab
   const cart = getCart(req);
   const item = sanitizeCartItem(req.body);
   if (!item.id || !item.name || !Number.isFinite(item.price)) {
