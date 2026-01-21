@@ -131,10 +131,19 @@ app.post('/login', (req, res) => {
 app.get('/admin/dashboard', allowRoles(['admin']), (req, res) => {
   res.render('admin-home');
 });
+//gul
+const deliveries = [
+  { id: '1', customer: 'Alice', item: 'Mystery Box A', status: 'Pending' },
+  { id: '2', customer: 'Bob', item: 'Mystery Box B', status: 'Out for Delivery' },
+  { id: '3', customer: 'Charlie', item: 'Mystery Box C', status: 'Delivered' }
+];
+
+
 
 app.get('/delivery/dashboard', allowRoles(['delivery man']), (req, res) => {
-  res.render('delivery-home');
+  res.render('delivery-home', { deliveries });
 });
+
 
 app.get('/admin/add-product', allowRoles(['admin']), (req, res) => {
   res.render('admin-add-product');
@@ -372,15 +381,44 @@ app.post('/cart/remove/:id', allowRoles(['user']), (req, res) => {
 const protectedRoutes = [
   { path: '/mainpage', roles: ['user'], title: 'Main Page' },
   { path: '/order-tracking', roles: ['user'], title: 'Order Tracking' },
-  { path: '/delivery/add-status', roles: ['delivery man'], title: 'Add Delivery Status' },
-  { path: '/delivery/update-status', roles: ['delivery man'], title: 'Update Delivery Status' }
-];
+]
 
-protectedRoutes.forEach(({ path: routePath, roles, title }) => {
-  app.get(routePath, allowRoles(roles), (req, res) => {
-    res.send(`<h1>${title}</h1><p>Accessible by role: ${req.session.user.role}</p>`);
-  });
+// GET route for Add Delivery Status
+app.get('/delivery/add-status', allowRoles(['delivery man']), (req, res) => {
+  res.render('delivery-add-status'); // render your new EJS page for adding deliveries
 });
+
+// POST route for Add Delivery Status
+app.post('/delivery/add-status', allowRoles(['delivery man']), (req, res) => {
+  const { customer, item, status } = req.body;
+  deliveries.push({
+    id: Date.now().toString(),
+    customer,
+    item,
+    status
+  });
+  req.flash('success', 'Delivery added successfully.');
+  res.redirect('/delivery/dashboard');
+});
+
+// GET route for Update Delivery Status
+app.get('/delivery/update-status', allowRoles(['delivery man']), (req, res) => {
+  res.render('delivery-update-status', { deliveries }); // pass deliveries to the EJS
+});
+
+// POST route for Update Delivery Status
+app.post('/delivery/update-status', allowRoles(['delivery man']), (req, res) => {
+  const { id, status } = req.body;
+  const delivery = deliveries.find(d => d.id === id);
+  if (delivery) {
+    delivery.status = status;
+    req.flash('success', 'Delivery status updated successfully.');
+  } else {
+    req.flash('error', 'Delivery not found.');
+  }
+  res.redirect('/delivery/dashboard');
+});
+
 
 app.listen(PORT, () => {
   console.log('Toy store dApp frontend running on http://localhost:' + PORT);

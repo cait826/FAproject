@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Update Delivery Status | Republic Surprise</title>
+    <style>
+      :root {
+        --bg: #fef6e4;
+        --card: #ffffff;
+        --accent: #ff9f1c;
+        --accent-2: #2ec4b6;
+        --text: #172b4d;
+        --muted: #5f6c7b;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Segoe UI", Tahoma, sans-serif;
+        background: radial-gradient(circle at 18% 18%, #ffd6a5 0, rgba(255,214,165,0) 32%), radial-gradient(circle at 78% 0%, #a0e8af 0, rgba(160,232,175,0) 32%), var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 72px 16px 64px;
+        text-align: center;
+      }
+      .card {
+        width: min(800px, 100%);
+        background: var(--card);
+        border: 1px solid rgba(0,0,0,0.05);
+        border-radius: 18px;
+        padding: 28px;
+        box-shadow: 0 18px 36px rgba(0,0,0,0.12);
+        overflow-x: auto;
+      }
+      h1 { margin: 0 0 10px; letter-spacing: 0.5px; }
+      p { margin: 0 0 16px; color: var(--muted); }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 16px;
+      }
+      th, td {
+        text-align: left;
+        padding: 12px 8px;
+        border-bottom: 1px solid #ccc;
+      }
+      select {
+        padding: 6px 8px;
+        border-radius: 8px;
+        border: 1px solid #ccc;
+        font-size: 1rem;
+      }
+      button {
+        background: var(--accent);
+        color: #0f172a;
+        border: none;
+        border-radius: 12px;
+        padding: 8px 12px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: transform 0.15s ease, box-shadow 0.2s ease;
+        margin-left: 8px;
+      }
+      button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 12px 24px rgba(255,159,28,0.35);
+      }
+      header, footer {
+        position: fixed;
+        left: 0;
+        right: 0;
+        padding: 14px 18px;
+        text-align: center;
+        background: rgba(255,255,255,0.7);
+        backdrop-filter: blur(6px);
+        color: var(--text);
+      }
+      header { top: 0; }
+      footer { bottom: 0; }
+      header h2, footer p { margin: 0; letter-spacing: 0.5px; }
+    </style>
+  </head>
+  <body>
+    <%- include('partials/header') %>
+
+    <div class="card">
+      <h1>Update Delivery Status</h1>
+      <p>Change the status of your deliveries below.</p>
+
+      <% if (deliveries && deliveries.length) { %>
+        <table>
+          <thead>
+            <tr>
+              <th>Customer</th>
+              <th>Item</th>
+              <th>Status</th>
+              
+            </tr>
+          </thead>
+          <tbody>
+            <% deliveries.forEach(function(delivery) { %>
+              <tr>
+                <td><%= delivery.customer %></td>
+                <td><%= delivery.item %></td>
+                <td>
+                  <form action="/delivery/update-status" method="POST">
+                    <input type="hidden" name="id" value="<%= delivery.id %>">
+                    <select name="status">
+                      <option value="Pending" <%= delivery.status === 'Pending' ? 'selected' : '' %>>Pending</option>
+                      <option value="Out for Delivery" <%= delivery.status === 'Out for Delivery' ? 'selected' : '' %>>Out for Delivery</option>
+                      <option value="Delivered" <%= delivery.status === 'Delivered' ? 'selected' : '' %>>Delivered</option>
+                    </select>
+                    <button type="submit">Update</button>
+                  </form>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } else { %>
+        <p>No deliveries found.</p>
+      <% } %>
+    </div>
+
+    <%- include('partials/footer') %>
+  </body>
+</html>
