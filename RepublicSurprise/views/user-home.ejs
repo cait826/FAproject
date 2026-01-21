@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>User Home | Republic Surprise</title>
+    <title>About Us | Republic Surprise</title>
     <style>
       :root {
         --bg: #fef6e4;
@@ -35,7 +35,41 @@
         box-shadow: 0 18px 36px rgba(0,0,0,0.12);
       }
       h1 { margin: 0 0 10px; letter-spacing: 0.5px; }
-      p { margin: 0 0 20px; color: var(--muted); }
+      p { margin: 0 0 16px; color: var(--muted); line-height: 1.6; }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: #fff3d6;
+        border: 1px solid rgba(0,0,0,0.05);
+        padding: 8px 12px;
+        border-radius: 999px;
+        font-weight: 700;
+        color: #b45309;
+      }
+      .grid {
+        display: grid;
+        gap: 14px;
+        margin-top: 10px;
+      }
+      .bubble {
+        background: #fffaf2;
+        border: 1px solid rgba(0,0,0,0.06);
+        border-radius: 14px;
+        padding: 14px 16px;
+        text-align: left;
+        box-shadow: 0 10px 22px rgba(0,0,0,0.06);
+      }
+      .bubble h3 {
+        margin: 0 0 6px;
+        font-size: 1.05rem;
+      }
+      .bubble p {
+        margin: 0;
+      }
+      .emoji {
+        font-size: 1.1rem;
+      }
       header, footer {
         position: fixed;
         left: 0;
@@ -54,8 +88,27 @@
   <body>
     <%- include('partials/header') %>
     <div class="card">
-      <h1>User Home</h1>
-      <p>Welcome to Republic Surprise! Explore toys and manage your orders here.</p>
+      <h1>About Republic Surprise</h1>
+      <p>We’re a playful marketplace for collectible toys and blind boxes, bringing curated drops, easy on-chain checkout, and friendly delivery together so every unboxing feels like a surprise worth sharing.</p>
+      <div class="pill">✨ Transparent from order to delivery</div>
+      <div class="grid">
+        <div class="bubble">
+          <h3><span class="emoji">🔍</span> Traceable orders</h3>
+          <p>Every order is logged immutably. You can follow status changes without wondering if anything was altered along the way.</p>
+        </div>
+        <div class="bubble">
+          <h3><span class="emoji">🔗</span> Blockchain over black boxes</h3>
+          <p>Instead of a traditional database you can’t inspect, we anchor key events on-chain to prove authenticity of inventory, payments, and confirmations.</p>
+        </div>
+        <div class="bubble">
+          <h3><span class="emoji">🛡️</span> Shared trust, lower disputes</h3>
+          <p>Customers, admins, and delivery partners rely on the same verifiable history. That means fewer disputes, faster resolution, and happier collectors.</p>
+        </div>
+        <div class="bubble">
+          <h3><span class="emoji">🌈</span> Cute, careful packaging</h3>
+          <p>We pair the tech with friendly service—bright packaging, careful handling, and clear updates so your parcel arrives just as you expect.</p>
+        </div>
+      </div>
     </div>
     <%- include('partials/footer') %>
   </body>

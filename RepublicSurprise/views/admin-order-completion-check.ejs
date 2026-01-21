@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Order Check | <%= order.id %></title>
+    <style>
+      :root {
+        --bg: #fef6e4;
+        --card: #ffffff;
+        --accent: #ff9f1c;
+        --text: #172b4d;
+        --muted: #5f6c7b;
+        --line: rgba(0,0,0,0.08);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Segoe UI", Tahoma, sans-serif;
+        background: radial-gradient(circle at 18% 18%, #ffd6a5 0, rgba(255,214,165,0) 32%), radial-gradient(circle at 78% 0%, #a0e8af 0, rgba(160,232,175,0) 32%), var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+        padding: 72px 16px 64px;
+      }
+      .page { max-width: 800px; margin: 0 auto; }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        padding: 22px;
+        box-shadow: 0 18px 36px rgba(0,0,0,0.12);
+      }
+      h1 { margin: 0 0 10px; letter-spacing: 0.4px; }
+      p { margin: 0 0 12px; color: var(--muted); }
+      .row { display: grid; grid-template-columns: 180px 1fr; gap: 10px; margin-bottom: 8px; }
+      .label { font-weight: 700; }
+      .proof {
+        margin-top: 12px;
+        background: #fffaf2;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 12px;
+        text-align: center;
+      }
+      .proof img { max-width: 100%; border-radius: 10px; }
+      .actions { margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap; }
+      .action {
+        border: none;
+        background: var(--accent);
+        color: #0f172a;
+        border-radius: 10px;
+        padding: 10px 12px;
+        font-weight: 700;
+        cursor: pointer;
+        text-decoration: none;
+      }
+      .action:disabled { background: #e2e8f0; color: #6b7280; cursor: not-allowed; }
+      header, footer {
+        position: fixed;
+        left: 0;
+        right: 0;
+        padding: 14px 18px;
+        text-align: center;
+        background: rgba(255,255,255,0.7);
+        backdrop-filter: blur(6px);
+        color: var(--text);
+      }
+      header { top: 0; }
+      footer { bottom: 0; }
+      header h2, footer p { margin: 0; letter-spacing: 0.5px; }
+    </style>
+  </head>
+  <body>
+    <%- include('partials/header') %>
+    <div class="page card">
+      <h1>Confirm Order <%= order.id %></h1>
+      <p>Review delivery proof before completing the order.</p>
+      <div class="row"><div class="label">Customer</div><div><%= order.customer %></div></div>
+      <div class="row"><div class="label">Product</div><div><%= order.product %></div></div>
+      <div class="row"><div class="label">Quantity</div><div><%= order.qty %></div></div>
+      <div class="row"><div class="label">Status</div><div><%= order.status %></div></div>
+      <div class="proof">
+        <% if (delivery && delivery.proofImage) { %>
+          <img src="<%= delivery.proofImage %>" alt="Proof of delivery for <%= order.id %>">
+        <% } else { %>
+          <p style="color:#b45309;">No proof image submitted yet.</p>
+        <% } %>
+      </div>
+      <div class="actions">
+        <% if (order.status === 'Pending Delivery Confirmation' && delivery && delivery.proofImage) { %>
+          <form method="post" action="/admin/orders/confirm/<%= order.id %>">
+            <button class="action" type="submit">Approve & Complete</button>
+          </form>
+        <% } %>
+        <a class="action" href="/admin/orders" style="text-decoration:none;">Back to Orders</a>
+      </div>
+    </div>
+    <%- include('partials/footer') %>
+  </body>
+</html>

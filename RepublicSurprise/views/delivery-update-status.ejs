@@ -94,25 +94,29 @@
         <table>
           <thead>
             <tr>
+              <th>Order #</th>
               <th>Customer</th>
-              <th>Item</th>
-              <th>Status</th>
-              
+              <th>Status / Proof</th>
             </tr>
           </thead>
           <tbody>
             <% deliveries.forEach(function(delivery) { %>
               <tr>
+                <td><%= delivery.orderNumber || delivery.id %></td>
                 <td><%= delivery.customer %></td>
-                <td><%= delivery.item %></td>
                 <td>
-                  <form action="/delivery/update-status" method="POST">
+                  <form action="/delivery/update-status" method="POST" enctype="multipart/form-data">
                     <input type="hidden" name="id" value="<%= delivery.id %>">
-                    <select name="status">
+                    <select name="status" class="status-select">
                       <option value="Pending" <%= delivery.status === 'Pending' ? 'selected' : '' %>>Pending</option>
                       <option value="Out for Delivery" <%= delivery.status === 'Out for Delivery' ? 'selected' : '' %>>Out for Delivery</option>
-                      <option value="Delivered" <%= delivery.status === 'Delivered' ? 'selected' : '' %>>Delivered</option>
+                      <option value="Pending confirmation" <%= delivery.status === 'Pending confirmation' ? 'selected' : '' %>>Pending confirmation</option>
+                      <option value="Completed" <%= delivery.status === 'Completed' ? 'selected' : '' %>>Completed (upload proof)</option>
                     </select>
+                    <div class="proof-wrap" style="display:<%= delivery.status === 'Completed' ? 'block' : 'none' %>; margin-top:6px; font-size:0.9rem; color:#5f6c7b;">
+                      Proof (.jpg/.png):
+                      <input type="file" name="proof" accept=".jpg,.jpeg,.png" />
+                    </div>
                     <button type="submit">Update</button>
                   </form>
                 </td>
@@ -126,5 +130,17 @@
     </div>
 
     <%- include('partials/footer') %>
+    <script>
+      document.querySelectorAll('tr').forEach((row) => {
+        const select = row.querySelector('.status-select');
+        const proof = row.querySelector('.proof-wrap');
+        if (!select || !proof) return;
+        const toggle = () => {
+          proof.style.display = select.value === 'Completed' ? 'block' : 'none';
+        };
+        select.addEventListener('change', toggle);
+        toggle();
+      });
+    </script>
   </body>
 </html>

@@ -253,6 +253,11 @@
             </svg>
             <span class="cart-count" data-cart-count><%= cartCount || 0 %></span>
           </a>
+          <% if (user) { %>
+            <form method="post" action="/logout" style="margin:0;">
+              <button class="icon-btn" type="submit">Logout</button>
+            </form>
+          <% } %>
         </div>
       </header>
 
@@ -350,9 +355,14 @@
         try {
           const response = await fetch('/cart/add', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
             body: JSON.stringify({ id: product.id, name: product.name, price: product.price, qty })
           });
+          if (response.status === 401) {
+            const data = await response.json().catch(() => ({}));
+            window.location = data.redirect || '/login';
+            return;
+          }
           if (!response.ok) throw new Error('cart');
           const data = await response.json();
           updateCartBadge(data.cartCount);

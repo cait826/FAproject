@@ -84,17 +84,17 @@
       <p>Fill in the details to add a new delivery record.</p>
 
       <form action="/delivery/add-status" method="POST">
+        <label>Order Number:</label>
+        <input type="text" name="orderNumber" required>
+
         <label>Customer Name:</label>
         <input type="text" name="customer" required>
-
-        <label>Item Name:</label>
-        <input type="text" name="item" required>
 
         <label>Status:</label>
         <select name="status">
           <option value="Pending">Pending</option>
           <option value="Out for Delivery">Out for Delivery</option>
-          <option value="Delivered">Delivered</option>
+          <option value="Pending confirmation">Pending confirmation</option>
         </select>
 
         <button type="submit" class="button">Add</button>

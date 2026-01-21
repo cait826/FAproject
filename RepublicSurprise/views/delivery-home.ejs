@@ -48,7 +48,7 @@
         color: #0f172a;
         border: none;
         border-radius: 12px;
-        padding: 12px 16px;
+        padding: 14px 18px;
         font-weight: 700;
         cursor: pointer;
         text-decoration: none;
@@ -56,6 +56,24 @@
       }
       a.button:hover { transform: translateY(-2px); box-shadow: 0 12px 24px rgba(255,159,28,0.35); }
       a.button.alt { background: var(--accent-2); color: #0b3b35; }
+      table.delivery-table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0 14px;
+        margin-top: 20px;
+      }
+      table.delivery-table td {
+        text-align: left;
+        padding: 14px 16px;
+        background: #fefaf2;
+        border: 1px solid rgba(0,0,0,0.05);
+        border-radius: 14px;
+      }
+      table.delivery-table a.button {
+        padding: 12px 14px;
+        display: inline-block;
+        margin-right: 6px;
+      }
       header, footer {
         position: fixed;
         left: 0;
@@ -78,23 +96,22 @@
   <p>Welcome, <%= user.email %>. Track and update parcel deliveries.</p>
 
   <% if (deliveries && deliveries.length) { %>
-    <table style="width:100%; border-collapse: collapse; margin-top: 20px;">
-      <thead>
-        <tr style="text-align:left; border-bottom:1px solid #ccc;">
-          <th>Customer</th>
-          <th>Item</th>
-          <th>Status</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
+    <table class="delivery-table">
       <tbody>
         <% deliveries.forEach(function(delivery){ %>
-          <tr style="border-bottom:1px solid #eee;">
-            <td><%= delivery.customer %></td>
-            <td><%= delivery.item %></td>
-            <td><%= delivery.status %></td>
+          <tr>
             <td>
-              <a class="button" href="/delivery/update-status?id=<%= delivery.id %>">Update Status</a>
+              <div style="display:flex; flex-direction:column; gap:6px;">
+                <div><strong>Order ID:</strong> <a href="/delivery/order/<%= delivery.id %>"><%= delivery.id %></a></div>
+                <div><strong>Customer:</strong> <%= delivery.customer %></div>
+                <div><strong>Status:</strong> <%= delivery.status %></div>
+                <% if (delivery.status === 'Pending confirmation') { %>
+                  <div style="color:#b45309;">Awaiting admin confirmation (proof submitted)</div>
+                <% } %>
+                <div style="margin-top:6px;">
+                  <a class="button" href="/delivery/update-status?id=<%= delivery.id %>">Update Status</a>
+                </div>
+              </div>
             </td>
           </tr>
         <% }) %>
