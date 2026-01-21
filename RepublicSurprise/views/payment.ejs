@@ -1,183 +1,444 @@
-<%- include('partials/header') %>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Payment</title>
 
-<style>
-  :root{ --bg:#f6f2ea; --card:#fff; --accent:#f97316; --muted:#6b7280; --shadow:0 12px 30px rgba(2,6,23,0.06); --radius:14px }
-  body{ background:var(--bg) }
-  .wrap{ max-width:920px; margin:28px auto; padding:18px; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial; color:#0f172a }
-  .card{ background:var(--card); border-radius:var(--radius); padding:18px; box-shadow:var(--shadow); border:1px solid rgba(0,0,0,0.04) }
-  h1{ margin:0 0 6px }
-  .muted{ color:var(--muted) }
-  .row{ display:flex; gap:18px; align-items:flex-start }
-  .col{ flex:1 }
-  .aside{ width:320px }
-  .btn{ background:var(--accent); color:#071; border:none; padding:10px 14px; border-radius:12px; font-weight:800; cursor:pointer }
-  .btn[disabled]{ opacity:0.6; cursor:not-allowed }
-  .small{ font-size:0.95rem }
-  .invoice{ margin-top:18px }
-  .field{ margin:8px 0 }
-  .muted-block{ background:#fffaf6; border:1px solid rgba(249,115,22,0.08); padding:10px; border-radius:10px }
-</style>
+  <style>
+    :root{
+      --bgA:#fde7c7;
+      --bgB:#d9f6d6;
+      --card:#ffffff;
+      --soft:#fff7ef;
+      --border:rgba(0,0,0,0.06);
+      --text:#0f172a;
+      --muted:#64748b;
+      --accent:#f97316;
+      --shadow: 0 12px 30px rgba(2,6,23,0.08);
+      --radius:22px;
+    }
 
-<div class="wrap">
-  <h1>Payment</h1>
-  <p class="muted">Demo MetaMask flow — frontend only.</p>
+    html, body { margin:0; padding:0; }
 
-  <div id="app">
-    <div class="row">
-      <div class="col card" id="payment-card">
-        <h3 style="margin-top:0">Order</h3>
-        <div id="items-list" class="small muted" style="margin-bottom:12px"></div>
-        <div style="display:flex;justify-content:space-between;font-weight:800"><div>Total</div><div id="total-amt">0.00 ETH</div></div>
+    
+    body{
+      background:#ffffff;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial;
+      color: var(--text);
+    }
 
-        <div style="margin-top:14px">
-          <div class="muted-block">
-            <div class="field">Wallet: <strong id="wallet">Not connected</strong></div>
-            <div class="field" id="wallet-actions">
-              <button id="btnConnect" class="btn">Connect Wallet (MetaMask)</button>
-              <button id="btnConfirm" class="btn" disabled style="margin-left:8px">Confirm Payment</button>
+    
+    header{
+      background:#ffffff;              
+      padding: 14px 18px ;   
+    }
+    header h2{
+      font-size: 22px ;      
+    }
+    header nav a{
+      font-size: 14px ;     
+      padding: 6px 4px;
+    }
+    header form button{
+      padding: 10px 14px ;   
+      border-radius: 12px ;
+    }
+
+    
+    .page-bg{
+      min-height: calc(100vh - 0px);
+      background: linear-gradient(90deg, var(--bgA), var(--bgB));
+      padding: 46px 0 90px;
+    }
+
+    .page-wrap{
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 0 16px;
+    }
+
+    .center-card{
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      border: 1px solid rgba(0,0,0,0.04);
+      padding: 26px 26px 22px;
+    }
+
+    .title{
+      text-align:center;
+      font-size: 34px;
+      margin: 4px 0 8px;
+      font-weight: 900;
+      letter-spacing: .2px;
+    }
+
+    .subtitle{
+      text-align:center;
+      color: var(--muted);
+      margin: 0 0 18px;
+    }
+
+    .pill{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap: 8px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(249,115,22,0.18);
+      background: rgba(249,115,22,0.08);
+      color: #b45309;
+      font-weight: 800;
+      font-size: 13px;
+      margin: 0 auto 18px;
+    }
+
+    .grid{
+      display:grid;
+      grid-template-columns: 1.2fr .8fr;
+      gap: 16px;
+      margin-top: 6px;
+    }
+    @media (max-width: 900px){
+      .grid{ grid-template-columns: 1fr; }
+    }
+
+    .box{
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      background: #fff;
+      padding: 16px;
+    }
+
+    .box h3, .box h4{
+      margin: 0 0 10px;
+      font-size: 16px;
+      font-weight: 900;
+    }
+
+    .muted{ color: var(--muted); }
+    .small{ font-size: 14px; }
+
+    .order-row{
+      display:flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(0,0,0,0.06);
+    }
+    .order-row:last-child{ border-bottom: none; }
+
+    .total-row{
+      display:flex;
+      justify-content: space-between;
+      font-weight: 900;
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(0,0,0,0.06);
+    }
+
+    .wallet-panel{
+      background: var(--soft);
+      border: 1px solid rgba(249,115,22,0.14);
+      border-radius: 18px;
+      padding: 14px;
+      margin-top: 12px;
+    }
+
+    .btn{
+      border: none;
+      border-radius: 12px;
+      padding: 10px 14px;
+      font-weight: 900;
+      cursor: pointer;
+      display:inline-flex;
+      align-items:center;
+      gap: 8px;
+    }
+    .btnPrimary{ background: var(--accent); color: #111; }
+    .btnPrimary:hover{ filter: brightness(.98); }
+    .btnConfirm{ background: #fbbf24; color:#111; }
+    .btnGrey{ background:#e6e6e6; color:#111; }
+
+    .btn[disabled]{ opacity:.55; cursor:not-allowed; }
+
+    #status{
+      margin-top: 10px;
+      color: var(--muted);
+    }
+
+    .invoice-card{
+      margin-top: 16px;
+    }
+
+    table{
+      width:100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      font-size: 14px;
+    }
+    th, td{
+      padding: 10px 8px;
+      border-bottom: 1px solid rgba(0,0,0,0.06);
+      text-align:left;
+    }
+    th{
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+    }
+    .right{ text-align:right; }
+    code{ font-size: 12px; }
+
+    
+    footer{
+      text-align:center !important;
+      padding: 12px 0 !important;
+      background:#ffffff; 
+    }
+  </style>
+</head>
+
+<body>
+  <%- include('partials/header') %>
+
+  <div class="page-bg">
+    <div class="page-wrap">
+      <div class="center-card">
+        <div class="title">Payment</div>
+        <div class="subtitle">Demo MetaMask flow — frontend only.</div>
+        <div style="display:flex;justify-content:center;">
+          <div class="pill">✨ Transparent from order to delivery</div>
+        </div>
+
+        <div id="app">
+          <div class="grid">
+            <div class="box" id="payment-card">
+              <h3>Order</h3>
+              <div id="items-list" class="small muted" style="margin-bottom:10px"></div>
+
+              <div class="total-row">
+                <div>Total</div>
+                <div id="total-amt">S$0.00</div>
+              </div>
+
+              <div class="wallet-panel">
+                <div class="small" style="margin-bottom:10px;">
+                  Wallet: <strong id="wallet">Not connected</strong>
+                </div>
+
+                <div id="wallet-actions">
+                  <button id="btnConnect" class="btn btnPrimary">🔗 Connect Wallet (MetaMask)</button>
+                  <button id="btnConfirm" class="btn btnConfirm" disabled style="margin-left:8px;">✅ Confirm Payment</button>
+                </div>
+
+                <div class="small" id="status"></div>
+              </div>
             </div>
-            <div class="field small" id="status"></div>
+
+            <div class="box">
+              <h4>Invoice Preview</h4>
+              <div id="invoice-preview" class="small muted">
+                Not generated yet. After confirming payment, a printable invoice will appear here.
+              </div>
+            </div>
+          </div>
+
+          <div id="invoice" class="box invoice-card" style="display:none">
+            <h3>Invoice</h3>
+            <div class="small muted">Receipt for your demo purchase</div>
+
+            <div class="small" style="margin-top:10px;">
+              <div style="margin:6px 0;">Invoice ID: <strong id="inv-id"></strong></div>
+              <div style="margin:6px 0;">Date: <span id="inv-date"></span></div>
+              <div style="margin:6px 0;">Wallet: <code id="inv-wallet"></code></div>
+            </div>
+
+            <table>
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th class="right">Qty</th>
+                  <th class="right">Unit</th>
+                  <th class="right">Subtotal</th>
+                </tr>
+              </thead>
+              <tbody id="inv-items"></tbody>
+            </table>
+
+            <div class="total-row">
+              <div>Total</div>
+              <div id="inv-total"></div>
+            </div>
+
+            <div style="margin-top:12px;">
+              <button id="printBtn" class="btn btnPrimary">🖨 Print Invoice</button>
+              <a href="/order-tracking" class="btn btnPrimary" style="margin-left:8px;text-decoration:none;">Track Order</a>
+              <button id="backBtn" class="btn btnGrey" style="margin-left:8px;">Back</button>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div class="aside card">
-        <h4 style="margin:0 0 8px">Invoice Preview</h4>
-        <div id="invoice-preview" class="small muted">Not generated yet. After confirming payment, a printable invoice will appear here.</div>
-      </div>
-    </div>
-
-    <div id="invoice" class="card invoice" style="display:none">
-      <h3 style="margin-top:0">Invoice</h3>
-      <div class="small muted">Receipt for your demo purchase</div>
-      <div class="field">Invoice ID: <strong id="inv-id"></strong></div>
-      <div class="field">Date: <span id="inv-date"></span></div>
-      <div class="field">Wallet: <code id="inv-wallet" class="small"></code></div>
-
-      <table style="width:100%;margin-top:8px;border-collapse:collapse">
-        <thead><tr><th style="text-align:left">Item</th><th style="text-align:center">Qty</th><th style="text-align:right">Unit</th><th style="text-align:right">Subtotal</th></tr></thead>
-        <tbody id="inv-items"></tbody>
-      </table>
-
-      <div style="display:flex;justify-content:space-between;font-weight:800;margin-top:12px"><div>Total</div><div id="inv-total"></div></div>
-
-      <div style="margin-top:12px">
-        <button id="printBtn" class="btn">Print Invoice</button>
-        <a href="/order-tracking" class="btn" style="margin-left:8px;text-decoration:none">Track Order</a>
-        <button id="backBtn" class="btn" style="margin-left:8px;background:#e6e6e6;color:#000">Back</button>
       </div>
     </div>
   </div>
-</div>
 
-<script>
-(() => {
-  const CHECKOUT_KEY = 'CHECKOUT_DATA';
-  const ALT_KEY = 'FA_CART_CHECKOUT_DATA';
-  const INVOICE_KEY = 'INVOICE_DATA';
-  const TRACKING_KEY = 'ORDER_TRACKING_DATA';
+  <script>
+  (() => {
+    const CHECKOUT_KEY = 'CHECKOUT_DATA';
+    const ALT_KEY = 'FA_CART_CHECKOUT_DATA';
+    const INVOICE_KEY = 'INVOICE_DATA';
+    const TRACKING_KEY = 'ORDER_TRACKING_DATA';
+    const COINGECKO_URL = 'https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=sgd';
 
-  const $ = id => document.getElementById(id);
+    const $ = id => document.getElementById(id);
 
-  function fmtEth(n){ return Number(n).toFixed(6) + ' ETH'; }
-
-  // load items from sessionStorage if present, otherwise demo item
-  function loadCheckout(){
-    const raw = sessionStorage.getItem(CHECKOUT_KEY) || sessionStorage.getItem(ALT_KEY);
-    if(raw){ try{ return JSON.parse(raw); }catch(e){ /* ignore */ } }
-    // demo fallback
-    return { items: [{ name: 'Demo Surprise Box', qty: 1, price: 0.01 }], total: 0.01 };
-  }
-
-  function renderOrder(chk){
-    const list = $('items-list'); list.innerHTML = '';
-    (chk.items || []).forEach(i => {
-      const div = document.createElement('div');
-      div.style.display = 'flex'; div.style.justifyContent = 'space-between'; div.style.padding = '6px 0';
-      div.innerHTML = `<div>${i.name}</div><div style="text-align:center">${i.qty}</div><div style="text-align:right">${fmtEth(i.price)}</div>`;
-      list.appendChild(div);
-    });
-    $('total-amt').textContent = fmtEth(chk.total || 0);
-    $('invoice-preview').textContent = `Items: ${ (chk.items||[]).map(x=>x.name).join(', ') } — Total ${fmtEth(chk.total||0)}`;
-  }
-
-  // MetaMask helpers
-  async function connectWallet(){
-    if(!window.ethereum){ throw new Error('MetaMask not detected'); }
-    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-    return accounts && accounts[0];
-  }
-
-  // UI flow
-  const checkout = loadCheckout();
-  renderOrder(checkout);
-
-  let connected = null;
-  $('btnConnect').addEventListener('click', async ()=>{
-    try{
-      $('status').textContent = 'Requesting wallet...';
-      const acc = await connectWallet();
-      connected = acc;
-      $('wallet').textContent = acc ? (acc.slice(0,6)+'...'+acc.slice(-4)) : 'Connected';
-      $('status').textContent = acc ? 'Wallet connected' : '';
-      $('btnConfirm').disabled = false;
-    }catch(err){
-      console.error(err);
-      $('status').textContent = err && err.message ? err.message : String(err);
-      if(String(err).toLowerCase().includes('user rejected')) $('status').textContent = 'Connection request rejected';
+    function fmtSgd(n){
+      const rate = window.ETH_SGD_RATE || 0;
+      if(!rate) return 'S$0.00';
+      return 'S$' + (Number(n) * rate).toFixed(2);
     }
-  });
 
-  $('btnConfirm').addEventListener('click', ()=>{
-    // simulate payment
-    $('status').textContent = 'Processing payment...';
-    $('btnConfirm').disabled = true; $('btnConnect').disabled = true;
-    setTimeout(()=>{
-      $('status').textContent = 'Payment successful (simulated)';
-      showInvoice(connected, checkout);
-    }, 900);
-  });
+    async function fetchRate(){
+      try{
+        const res = await fetch(COINGECKO_URL);
+        if(!res.ok) throw new Error('Rate fetch failed');
+        const body = await res.json();
+        const r = body && body.ethereum && body.ethereum.sgd ? Number(body.ethereum.sgd) : 0;
+        window.ETH_SGD_RATE = r;
+        return r;
+      }catch(e){
+        console.warn('Failed to fetch ETH→SGD rate', e);
+        window.ETH_SGD_RATE = 0;
+        return 0;
+      }
+    }
 
-  function showInvoice(account, chk){
-    const inv = { invoiceId: 'INV-'+Date.now(), dateTime: new Date().toLocaleString(), wallet: account || 'N/A', items: chk.items || [], total: chk.total || 0 };
-    $('inv-id').textContent = inv.invoiceId;
-    $('inv-date').textContent = inv.dateTime;
-    $('inv-wallet').textContent = inv.wallet;
-    const tbody = $('inv-items'); tbody.innerHTML = '';
-    inv.items.forEach(it => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${it.name}</td><td style="text-align:center">${it.qty}</td><td style="text-align:right">${fmtEth(it.price)}</td><td style="text-align:right">${fmtEth((Number(it.price)||0)*(Number(it.qty)||0))}</td>`;
-      tbody.appendChild(tr);
+    function loadCheckout(){
+      const raw = sessionStorage.getItem(CHECKOUT_KEY) || sessionStorage.getItem(ALT_KEY);
+      if(raw){ try{ return JSON.parse(raw); }catch(e){} }
+      return { items: [{ name: 'Demo Surprise Box', qty: 1, price: 0.01 }], total: 0.01 };
+    }
+
+    function renderOrder(chk){
+      const list = $('items-list'); list.innerHTML = '';
+      (chk.items || []).forEach(i => {
+        const div = document.createElement('div');
+        div.className = 'order-row';
+        div.innerHTML = `
+          <div style="flex:1">${i.name}</div>
+          <div style="width:60px;text-align:center">${i.qty}</div>
+          <div style="width:120px;text-align:right">${fmtSgd(i.price)}</div>
+        `;
+        list.appendChild(div);
+      });
+      $('total-amt').textContent = fmtSgd(chk.total || 0);
+      $('invoice-preview').textContent =
+        `Items: ${(chk.items||[]).map(x=>x.name).join(', ')} — Total ${fmtSgd(chk.total||0)}`;
+    }
+
+    async function connectWallet(){
+      if(!window.ethereum){ throw new Error('MetaMask not detected'); }
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      return accounts && accounts[0];
+    }
+
+    const checkout = loadCheckout();
+
+    // fetch rate first, then render order so SGD values are shown when available
+    fetchRate().then(rate => {
+      if(rate) $('status').textContent = 'Exchange rate loaded';
+      renderOrder(checkout);
+    }).catch(()=> renderOrder(checkout));
+
+    let connected = null;
+
+    $('btnConnect').addEventListener('click', async ()=>{
+      try{
+        $('status').textContent = 'Requesting wallet...';
+        const acc = await connectWallet();
+        connected = acc;
+        $('wallet').textContent = acc ? (acc.slice(0,6)+'...'+acc.slice(-4)) : 'Connected';
+        $('status').textContent = acc ? 'Wallet connected' : '';
+        $('btnConfirm').disabled = false;
+      }catch(err){
+        $('status').textContent = err && err.message ? err.message : String(err);
+        if(String(err).toLowerCase().includes('user rejected')) $('status').textContent = 'Connection request rejected';
+      }
     });
-    $('inv-total').textContent = fmtEth(inv.total);
 
-    // store invoice for /invoice view
-    try{ sessionStorage.setItem(INVOICE_KEY, JSON.stringify(inv)); }catch(e){ /* ignore */ }
+    $('btnConfirm').addEventListener('click', ()=>{
+      $('status').textContent = 'Processing payment...';
+      $('btnConfirm').disabled = true; $('btnConnect').disabled = true;
+      setTimeout(()=>{
+        $('status').textContent = 'Payment successful (simulated)';
+        showInvoice(connected, checkout);
+      }, 900);
+    });
 
-    const tracking = {
-      orderId: 'ORD-' + Date.now(),
-      invoiceId: inv.invoiceId,
-      placedAt: inv.dateTime,
-      items: inv.items || [],
-      statusHistory: [
-        { label: 'Payment confirmed', time: inv.dateTime },
-        { label: 'Order packed', time: 'Pending' },
-        { label: 'Out for delivery', time: 'Pending' },
-        { label: 'Delivered', time: 'Pending' }
-      ]
-    };
-    try{ sessionStorage.setItem(TRACKING_KEY, JSON.stringify(tracking)); }catch(e){ /* ignore */ }
+    function showInvoice(account, chk){
+      const inv = {
+        invoiceId: 'INV-'+Date.now(),
+        dateTime: new Date().toLocaleString(),
+        wallet: account || 'N/A',
+        items: chk.items || [],
+        total: chk.total || 0,
+        sgdTotal: (chk.total || 0) * (window.ETH_SGD_RATE || 0)
+      };
 
-    $('invoice').style.display = 'block';
-    // hide payment card
-    $('payment-card').style.display = 'none';
-    $('invoice-preview').textContent = 'Invoice ready';
-  }
+      $('inv-id').textContent = inv.invoiceId;
+      $('inv-date').textContent = inv.dateTime;
+      $('inv-wallet').textContent = inv.wallet;
 
-  $('printBtn').addEventListener('click', ()=> window.print());
-  $('backBtn').addEventListener('click', ()=>{ $('invoice').style.display = 'none'; $('payment-card').style.display = 'block'; $('btnConfirm').disabled = false; $('btnConnect').disabled = false; });
+      const tbody = $('inv-items'); tbody.innerHTML = '';
+      inv.items.forEach(it => {
+        const tr = document.createElement('tr');
+        const subtotal = (Number(it.price)||0) * (Number(it.qty)||0);
+        tr.innerHTML = `
+          <td>${it.name}</td>
+          <td class="right">${it.qty}</td>
+          <td class="right">${fmtSgd(it.price)}</td>
+          <td class="right">${fmtSgd(subtotal)}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+      $('inv-total').textContent = fmtSgd(inv.total);
 
-})();
-</script>
+      try{ sessionStorage.setItem(INVOICE_KEY, JSON.stringify(inv)); }catch(e){}
 
-<%- include('partials/footer') %>
+      const tracking = {
+        orderId: 'ORD-' + Date.now(),
+        invoiceId: inv.invoiceId,
+        placedAt: inv.dateTime,
+        items: inv.items || [],
+        statusHistory: [
+          { label: 'Payment confirmed', time: inv.dateTime },
+          { label: 'Order packed', time: 'Pending' },
+          { label: 'Out for delivery', time: 'Pending' },
+          { label: 'Delivered', time: 'Pending' }
+        ],
+        sgdTotal: inv.sgdTotal
+      };
+      try{ sessionStorage.setItem(TRACKING_KEY, JSON.stringify(tracking)); }catch(e){}
+
+      $('invoice').style.display = 'block';
+      $('payment-card').style.display = 'none';
+      $('invoice-preview').textContent = 'Invoice ready';
+    }
+
+    $('printBtn').addEventListener('click', ()=> window.print());
+    $('backBtn').addEventListener('click', ()=>{
+      $('invoice').style.display = 'none';
+      $('payment-card').style.display = 'block';
+      $('btnConfirm').disabled = false;
+      $('btnConnect').disabled = false;
+    });
+  })();
+  </script>
+
+  <%- include('partials/footer') %>
+</body>
+</html>
