@@ -35,9 +35,9 @@
       }
       .topbar {
         display: flex;
-        align-items: center;
-        justify-content: space-between;
+        flex-direction: column;
         gap: 12px;
+        align-items: stretch;
         background: var(--panel);
         color: var(--ink);
         padding: 14px 16px;
@@ -45,11 +45,19 @@
         border: 1px solid rgba(0, 0, 0, 0.06);
         box-shadow: 0 10px 22px rgba(0, 0, 0, 0.08);
       }
-      .logo {
-        font-weight: 700;
-        letter-spacing: 0.6px;
-        font-size: 1.1rem;
+      .topbar-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
       }
+      .nav-wrapper {
+        display: flex;
+        align-items: center;
+      }
+      .nav-wrapper header { margin: 0; }
+      .nav-wrapper header > div { width: auto; }
       .top-actions {
         display: flex;
         align-items: center;
@@ -374,35 +382,34 @@
   <body>
     <div class="page">
       <header class="topbar">
-        <div class="logo">Republic Surprise</div>
-        <div class="top-actions">
-          <label class="search">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="11" cy="11" r="7"></circle>
-              <line x1="16.65" y1="16.65" x2="21" y2="21"></line>
-            </svg>
-            <input type="search" id="searchInput" placeholder="Search collectibles" autocomplete="off" />
-          </label>
-          <button class="icon-btn" title="Profile">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-              <circle cx="12" cy="7" r="4" />
-            </svg>
-            <span><%= user && user.email ? user.email : (user ? 'Account' : 'Guest') %></span>
-          </button>
-          <a class="icon-btn cart-badge" href="/cart" title="Cart">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="9" cy="21" r="1"></circle>
-              <circle cx="20" cy="21" r="1"></circle>
-              <path d="M1 1h4l1.68 10.06a2 2 0 0 0 2 1.69h7.72a2 2 0 0 0 2-1.69L19 6H6" />
-            </svg>
-            <span class="cart-count" data-cart-count><%= cartCount || 0 %></span>
-          </a>
-          <% if (user) { %>
-            <form method="post" action="/logout" style="margin:0;">
-              <button class="icon-btn" type="submit">Logout</button>
-            </form>
-          <% } %>
+        <div class="topbar-row">
+          <div class="nav-wrapper">
+            <%- include('partials/header') %>
+          </div>
+          <div class="top-actions">
+            <label class="search">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="7"></circle>
+                <line x1="16.65" y1="16.65" x2="21" y2="21"></line>
+              </svg>
+              <input type="search" id="searchInput" placeholder="Search collectibles" autocomplete="off" />
+            </label>
+            <button class="icon-btn" title="Profile">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
+              <span><%= user && user.email ? user.email : (user ? 'Account' : 'Guest') %></span>
+            </button>
+            <a class="icon-btn cart-badge" href="/cart" title="Cart">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="9" cy="21" r="1"></circle>
+                <circle cx="20" cy="21" r="1"></circle>
+                <path d="M1 1h4l1.68 10.06a2 2 0 0 0 2 1.69h7.72a2 2 0 0 0 2-1.69L19 6H6" />
+              </svg>
+              <span class="cart-count" data-cart-count><%= cartCount || 0 %></span>
+            </a>
+          </div>
         </div>
       </header>
 
@@ -465,6 +472,7 @@
           <p class="empty" id="emptyState">No items match your filters yet.</p>
         </section>
       </main>
+      <%- include('partials/footer') %>
     </div>
     <div class="toast" id="toast" aria-live="polite"></div>
     <script>
