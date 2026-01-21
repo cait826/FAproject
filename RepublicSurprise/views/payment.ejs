@@ -63,6 +63,7 @@
 
       <div style="margin-top:12px">
         <button id="printBtn" class="btn">Print Invoice</button>
+        <a href="/order-tracking" class="btn" style="margin-left:8px;text-decoration:none">Track Order</a>
         <button id="backBtn" class="btn" style="margin-left:8px;background:#e6e6e6;color:#000">Back</button>
       </div>
     </div>
@@ -74,6 +75,7 @@
   const CHECKOUT_KEY = 'CHECKOUT_DATA';
   const ALT_KEY = 'FA_CART_CHECKOUT_DATA';
   const INVOICE_KEY = 'INVOICE_DATA';
+  const TRACKING_KEY = 'ORDER_TRACKING_DATA';
 
   const $ = id => document.getElementById(id);
 
@@ -151,6 +153,20 @@
 
     // store invoice for /invoice view
     try{ sessionStorage.setItem(INVOICE_KEY, JSON.stringify(inv)); }catch(e){ /* ignore */ }
+
+    const tracking = {
+      orderId: 'ORD-' + Date.now(),
+      invoiceId: inv.invoiceId,
+      placedAt: inv.dateTime,
+      items: inv.items || [],
+      statusHistory: [
+        { label: 'Payment confirmed', time: inv.dateTime },
+        { label: 'Order packed', time: 'Pending' },
+        { label: 'Out for delivery', time: 'Pending' },
+        { label: 'Delivered', time: 'Pending' }
+      ]
+    };
+    try{ sessionStorage.setItem(TRACKING_KEY, JSON.stringify(tracking)); }catch(e){ /* ignore */ }
 
     $('invoice').style.display = 'block';
     // hide payment card

@@ -340,6 +340,10 @@ app.get('/invoice', (req, res) => {
   res.render('invoice');
 });
 
+app.get('/order-tracking', allowRoles(['user']), (req, res) => {
+  res.render('order-tracking');
+});
+
 app.post('/cart/add', allowRoles(['user']), (req, res) => {
   const cart = getCart(req);
   const item = sanitizeCartItem(req.body);

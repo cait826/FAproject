@@ -57,13 +57,14 @@
 
         <div class="total"><div class="small">Total paid</div><div id="total">0.000000 ETH</div></div>
 
-        <div style="margin-top:14px"><button id="print" class="btn">Print Invoice</button><a href="/cart" class="btn" style="margin-left:8px;text-decoration:none">Back to Shop</a></div>
+        <div style="margin-top:14px"><button id="print" class="btn">Print Invoice</button><a href="/order-tracking" class="btn" style="margin-left:8px;text-decoration:none">Track Order</a><a href="/cart" class="btn" style="margin-left:8px;text-decoration:none">Back to Shop</a></div>
       </div>
     </div>
 
     <script>
     (() => {
       const KEYS = ['INVOICE_DATA','FA_INVOICE_DATA'];
+      const TRACKING_KEY = 'ORDER_TRACKING_DATA';
       const $ = id => document.getElementById(id);
       function esc(s){ if(!s) return ''; return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]); }
       function fmt(n){ return Number(n).toFixed(6) + ' ETH'; }
@@ -93,6 +94,23 @@
 
         $('total').textContent = fmt(inv.totalPaidEth || inv.total || 0);
         $('card').style.display = 'block';
+
+        if (!sessionStorage.getItem(TRACKING_KEY)) {
+          const placedAt = inv.dateTime || new Date().toLocaleString();
+          const tracking = {
+            orderId: inv.orderId || ('ORD-' + Date.now()),
+            invoiceId: inv.invoiceId || '',
+            placedAt,
+            items: inv.items || [],
+            statusHistory: [
+              { label: 'Payment confirmed', time: placedAt },
+              { label: 'Order packed', time: 'Pending' },
+              { label: 'Out for delivery', time: 'Pending' },
+              { label: 'Delivered', time: 'Pending' }
+            ]
+          };
+          try { sessionStorage.setItem(TRACKING_KEY, JSON.stringify(tracking)); } catch (e) { /* ignore */ }
+        }
 
         $('print').addEventListener('click', ()=> window.print());
       });
