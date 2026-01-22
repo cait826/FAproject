@@ -476,7 +476,10 @@
     </div>
     <div class="toast" id="toast" aria-live="polite"></div>
     <script>
-      const serverProducts = <%- JSON.stringify(products || []) %>;
+      const serverProductsRaw = <%- JSON.stringify(products || []) %>;
+      const serverProducts = Array.isArray(serverProductsRaw)
+        ? serverProductsRaw.filter((item) => item.active !== false)
+        : [];
       const demoProducts = [
         { id: 'lolo', name: 'Lolo the Piggy', price: 49.9, stock: 8, badge: 'Set of 3', image: '/images/lolo_the_piggy.png', description: 'A cheerful trio of piggy pals.' },
         { id: 'pino', name: 'Pino JoJo', price: 37.9, stock: 5, badge: 'Single box', image: '/images/pino_jojo.png', description: 'Dreamy pastel friend.' },

@@ -12,6 +12,8 @@ const products = [];
 let lastProductId = null;
 const upload = multer({ storage: multer.memoryStorage(), limits: { files: 3 } });
 
+const getActiveProducts = () => products.filter((item) => item.active !== false);
+
 const productFields = [
   'productName',
   'productDescription',
@@ -508,7 +510,8 @@ app.post('/admin/reactivate-product/:id', allowRoles(['admin']), (req, res) => {
 });
 
 app.get('/shopping', (_req, res) => {
-  res.render('shopping', { products });
+  const activeProducts = getActiveProducts();
+  res.render('shopping', { products: activeProducts });
 });
 
 app.get('/product', (req, res) => {
@@ -552,8 +555,9 @@ app.get('/product', (req, res) => {
       };
     });
 
-  const serverCatalog = normalizeProducts(products, 0);
-  const demoCatalog = normalizeProducts(demoProducts, products.length);
+  const activeProducts = getActiveProducts();
+  const serverCatalog = normalizeProducts(activeProducts, 0);
+  const demoCatalog = normalizeProducts(demoProducts, activeProducts.length);
   const catalog = serverCatalog.length ? [...serverCatalog, ...demoCatalog] : demoCatalog;
   const targetId = req.query.id;
   const selected = targetId ? catalog.find((item) => item.id === targetId) : catalog[0] || null;
