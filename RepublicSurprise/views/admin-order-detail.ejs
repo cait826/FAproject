@@ -97,6 +97,25 @@
         <% } %>
         <a class="action" style="text-decoration:none; display:inline-flex; align-items:center;" href="/admin/orders">Back to Orders</a>
       </div>
+      <hr style="margin:18px 0; border: none; border-top:1px solid rgba(0,0,0,0.08);" />
+      <h2 style="margin:0 0 8px;">Audit log</h2>
+      <% const audits = order.auditLog || order.audits || []; %>
+      <% if (!audits.length) { %>
+        <p style="color:#5f6c7b;">No audit entries yet.</p>
+      <% } else { %>
+        <ul style="list-style:disc; padding-left:18px; margin:0; color:#172b4d;">
+          <% audits.forEach(function(a) { %>
+            <li>
+              <strong><%= a.action %></strong>
+              <span style="color:#5f6c7b;">@ <%= a.timestamp %></span>
+              <div style="font-size:0.9rem; color:#172b4d; margin-top:2px;">
+                Function: <%= a.function || 'N/A' %><br/>
+                Tx: <%= a.txHash || 'N/A' %>
+              </div>
+            </li>
+          <% }) %>
+        </ul>
+      <% } %>
     </div>
     <%- include('partials/footer') %>
   </body>

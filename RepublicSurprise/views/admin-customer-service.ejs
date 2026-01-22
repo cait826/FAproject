@@ -119,6 +119,7 @@
                 <th>Ticket ID</th>
                 <th>Order ID</th>
                 <th>Customer</th>
+                <th>Reason</th>
                 <th>Amount</th>
                 <th>Type</th>
                 <th>Status</th>
@@ -131,6 +132,7 @@
                   <td><a href="/admin/customer-service/<%= t.id %>"><%= t.id %></a></td>
                   <td><%= t.orderId %></td>
                   <td><%= t.customer %></td>
+                  <td><%= t.reason || '-' %></td>
                   <td>$<%= Number(t.amount || 0).toFixed(2) %></td>
                   <td><%= t.type %> refund</td>
                   <td>
@@ -138,8 +140,11 @@
                     <span class="pill <%= pillClass %>"><%= t.status %></span>
                   </td>
                   <td>
-                    <form method="post" action="/admin/customer-service/approve/<%= t.id %>">
+                    <form method="get" action="/admin/customer-service/approve/<%= t.id %>">
                       <button class="action" type="submit" <%= t.status === 'Approved' ? 'disabled' : '' %>>Approve</button>
+                    </form>
+                    <form method="post" action="/admin/customer-service/reject/<%= t.id %>" style="margin-top:6px;">
+                      <button class="action" type="submit" <%= t.status === 'Rejected' ? 'disabled' : '' %>>Reject</button>
                     </form>
                   </td>
                 </tr>

@@ -102,7 +102,8 @@
           <tr>
             <td>
               <div style="display:flex; flex-direction:column; gap:6px;">
-                <div><strong>Order ID:</strong> <a href="/delivery/order/<%= delivery.id %>"><%= delivery.id %></a></div>
+                <div><strong>Order ID:</strong> <%= delivery.orderNumber %></div>
+                <div><strong>Delivery ID:</strong> <a href="/delivery/order/<%= delivery.id %>"><%= delivery.id %></a></div>
                 <div><strong>Customer:</strong> <%= delivery.customer %></div>
                 <div><strong>Status:</strong> <%= delivery.status %></div>
                 <% if (delivery.status === 'Pending confirmation') { %>

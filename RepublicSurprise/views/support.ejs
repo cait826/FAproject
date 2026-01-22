@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Customer Support | Republic Surprise</title>
+    <style>
+      :root {
+        --bg: #fef6e4;
+        --card: #ffffff;
+        --accent: #ff9f1c;
+        --text: #172b4d;
+        --muted: #5f6c7b;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Segoe UI", Tahoma, sans-serif;
+        background: radial-gradient(circle at 18% 18%, #ffd6a5 0, rgba(255,214,165,0) 32%), radial-gradient(circle at 78% 0%, #a0e8af 0, rgba(160,232,175,0) 32%), var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 72px 16px 64px;
+      }
+      .card {
+        width: min(720px, 100%);
+        background: var(--card);
+        border: 1px solid rgba(0,0,0,0.06);
+        border-radius: 18px;
+        padding: 24px;
+        box-shadow: 0 18px 36px rgba(0,0,0,0.12);
+      }
+      h1 { margin: 0 0 8px; }
+      p { margin: 0 0 14px; color: var(--muted); }
+      form { display: grid; gap: 12px; }
+      label { display: flex; flex-direction: column; gap: 6px; color: var(--muted); font-weight: 600; }
+      input, select, textarea {
+        padding: 10px 12px;
+        border-radius: 12px;
+        border: 1px solid rgba(0,0,0,0.12);
+        background: #fefaf2;
+        color: var(--text);
+      }
+      textarea { resize: vertical; min-height: 90px; max-height: 160px; }
+      button {
+        background: var(--accent);
+        color: #0f172a;
+        border: none;
+        border-radius: 12px;
+        padding: 12px 14px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .files { font-size: 0.9rem; color: var(--muted); }
+    </style>
+  </head>
+  <body>
+    <%- include('partials/header') %>
+    <div class="card">
+      <h1>Customer Support</h1>
+      <p>Submit a ticket for refunds or issues.</p>
+      <% if (errorMessages && errorMessages.length) { %>
+        <% errorMessages.forEach(function(msg){ %><div style="color:#b45309;"><%= msg %></div><% }) %>
+      <% } %>
+      <% if (successMessages && successMessages.length) { %>
+        <% successMessages.forEach(function(msg){ %><div style="color:#15803d;"><%= msg %></div><% }) %>
+      <% } %>
+      <form action="/support" method="post" enctype="multipart/form-data">
+        <label>Order Number
+          <input type="text" name="orderId" required />
+        </label>
+        <label>Reason
+          <select name="reason" required>
+            <option value="">Select a reason</option>
+            <option value="Product Damaged">Product Damaged</option>
+            <option value="Product Defective">Product Defective</option>
+            <option value="Order Completed but not Received">Order Completed but not Received</option>
+            <option value="Wrong Product">Wrong Product</option>
+          </select>
+        </label>
+        <label>Description (max 300 chars)
+          <textarea name="description" maxlength="300" placeholder="Describe the issue"></textarea>
+        </label>
+        <label>Address
+          <input type="text" name="address" placeholder="Optional shipping address for replacements" />
+        </label>
+        <label>Contact Number
+          <input type="text" name="contact" placeholder="Optional contact number" />
+        </label>
+        <label class="files">Proof (up to 2 images, .jpg/.png)
+          <input type="file" name="attachments" accept=".jpg,.jpeg,.png" multiple />
+        </label>
+        <button type="submit">Submit Ticket</button>
+        <a href="/shopping" style="text-decoration:none; color:#0f172a; font-weight:700; text-align:center; padding:10px 12px; border-radius:10px; border:1px solid rgba(0,0,0,0.12); background:#fefaf2;">Back</a>
+      </form>
+    </div>
+    <%- include('partials/footer') %>
+  </body>
+</html>

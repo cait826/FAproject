@@ -65,12 +65,20 @@
     <div class="page card">
       <h1>Order <%= delivery.id %></h1>
       <p>Delivery order details.</p>
-      <div class="row"><div class="label">Customer</div><div><%= delivery.customer %></div></div>
+      <div class="row"><div class="label">Full Name</div><div><%= delivery.customer || delivery.fullName || 'N/A' %></div></div>
       <div class="row"><div class="label">Order Number</div><div><%= delivery.orderNumber || delivery.id %></div></div>
+      <div class="row"><div class="label">Address</div><div><%= delivery.address || 'N/A' %></div></div>
+      <div class="row"><div class="label">Contact Number</div><div><%= delivery.contact || 'N/A' %></div></div>
       <div class="row"><div class="label">Status</div><div><%= delivery.status %></div></div>
       <div class="actions">
-        <a class="action" href="/delivery/update-status?id=<%= delivery.id %>">Update Status</a>
-        <a class="action" href="/delivery/dashboard">Back to Dashboard</a>
+        <% if (user && user.role === 'delivery man') { %>
+          <a class="action" href="/delivery/update-status?id=<%= delivery.id %>">Update Status</a>
+          <a class="action" href="/delivery/dashboard">Back</a>
+        <% } else if (user && user.role === 'admin') { %>
+          <a class="action" href="/admin/orders">Back</a>
+        <% } else { %>
+          <a class="action" href="/">Back</a>
+        <% } %>
       </div>
     </div>
     <%- include('partials/footer') %>

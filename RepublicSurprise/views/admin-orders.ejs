@@ -58,6 +58,18 @@
         padding: 22px;
         box-shadow: 0 18px 36px rgba(0,0,0,0.12);
       }
+      .filters {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-bottom: 12px;
+      }
+      .filters input {
+        padding: 10px 12px;
+        border-radius: 12px;
+        border: 1px solid rgba(0,0,0,0.12);
+        min-width: 200px;
+      }
       table {
         width: 100%;
         border-collapse: separate;
@@ -118,11 +130,16 @@
       <div class="card">
         <h1>Order Dashboard</h1>
         <p>Review incoming orders and confirm delivery completion.</p>
+        <div class="filters">
+          <input type="text" id="filterOrder" placeholder="Filter by order number" aria-label="Filter by order number">
+          <input type="text" id="filterAction" placeholder="Filter by action (e.g. order creation)" aria-label="Filter by action">
+        </div>
         <% if (orders && orders.length) { %>
           <table>
             <thead>
               <tr>
                 <th>Order ID</th>
+                <th>Delivery</th>
                 <th>Product</th>
                 <th>Customer</th>
                 <th>Price</th>
@@ -133,8 +150,21 @@
             </thead>
             <tbody>
               <% orders.forEach(function(order) { %>
-                <tr>
+                <% const relatedDeliveries = (deliveries || []).filter(function(d){ return (d.orderNumber || d.id) === order.id; }); %>
+                <tr class="order-row"
+                    data-order="<%= order.id %>"
+                    data-action="<%= (order.action || order.status || '').toLowerCase() %>">
                   <td><a href="/admin/orders/<%= order.id %>"><%= order.id %></a></td>
+                  <td>
+                    <% if (relatedDeliveries.length) { %>
+                      <% relatedDeliveries.forEach(function(del, di){ 
+                           const label = del.deliveryId || ('DEL-' + ('000' + (di+1)).slice(-3));
+                           const linkId = del.deliveryId || del.id;
+                       %>
+                        <div><a href="/admin/delivery/<%= linkId %>"><%= label %></a></div>
+                      <% }); %>
+                    <% } else { %>-<% } %>
+                  </td>
                   <td><%= order.product %></td>
                   <td><%= order.customer %></td>
                   <td>$<%= Number(order.price || 0).toFixed(2) %></td>
@@ -165,5 +195,23 @@
       </div>
     </div>
     <%- include('partials/footer') %>
+    <script>
+      const orderFilter = document.getElementById('filterOrder');
+      const actionFilter = document.getElementById('filterAction');
+      const rows = Array.from(document.querySelectorAll('.order-row'));
+      const applyFilter = () => {
+        const oVal = (orderFilter?.value || '').toLowerCase();
+        const aVal = (actionFilter?.value || '').toLowerCase();
+        rows.forEach((row) => {
+          const o = (row.dataset.order || '').toLowerCase();
+          const a = (row.dataset.action || '').toLowerCase();
+          const matchO = !oVal || o.includes(oVal);
+          const matchA = !aVal || a.includes(aVal);
+          row.style.display = matchO && matchA ? '' : 'none';
+        });
+      };
+      if (orderFilter) orderFilter.addEventListener('input', applyFilter);
+      if (actionFilter) actionFilter.addEventListener('input', applyFilter);
+    </script>
   </body>
 </html>

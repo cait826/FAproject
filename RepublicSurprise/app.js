@@ -186,7 +186,7 @@ app.get('/admin/dashboard', allowRoles(['admin']), (req, res) => {
   res.render('admin-home');
 });
 app.get('/admin/orders', allowRoles(['admin']), (_req, res) => {
-  res.render('admin-orders', { orders });
+  res.render('admin-orders', { orders, deliveries });
 });
 
 app.get('/admin/orders/:id', allowRoles(['admin']), (req, res) => {
@@ -204,7 +204,7 @@ app.get('/admin/orders/check/:id', allowRoles(['admin']), (req, res) => {
     req.flash('error', 'Order not found.');
     return res.redirect('/admin/orders');
   }
-  const delivery = deliveries.find((d) => d.id === order.id) || null;
+  const delivery = deliveries.find((d) => d.orderNumber === order.id || d.id === order.id || d.deliveryId === order.id) || null;
   res.render('admin-order-completion-check', { order, delivery });
 });
 
@@ -212,7 +212,7 @@ app.post('/admin/orders/confirm/:id', allowRoles(['admin']), (req, res) => {
   const target = orders.find((o) => o.id === req.params.id);
   if (target) {
     if (target.status === 'Pending Delivery Confirmation') {
-      const linkedDelivery = deliveries.find((d) => d.id === target.id);
+      const linkedDelivery = deliveries.find((d) => d.orderNumber === target.id || d.id === target.id || d.deliveryId === target.id);
       if (!linkedDelivery || !linkedDelivery.proofImage) {
         req.flash('error', 'Proof image missing. Please review submission before confirming.');
         return res.redirect(`/admin/orders/check/${target.id}`);
@@ -254,21 +254,45 @@ app.get('/admin/customer-service/:id', allowRoles(['admin']), (req, res) => {
   res.render('admin-refund-detail', { ticket });
 });
 
+app.get('/admin/customer-service/approve/:id', allowRoles(['admin']), (req, res) => {
+  const ticket = refundTickets.find((t) => t.id === req.params.id) || null;
+  if (!ticket) {
+    req.flash('error', 'Refund ticket not found.');
+    return res.redirect('/admin/customer-service');
+  }
+  res.render('admin-refund-approve', { ticket });
+});
+
 app.post('/admin/customer-service/approve/:id', allowRoles(['admin']), (req, res) => {
   const ticket = refundTickets.find((t) => t.id === req.params.id);
   if (!ticket) {
     req.flash('error', 'Refund ticket not found.');
     return res.redirect('/admin/customer-service');
   }
+  const { refundType, requestNewItem } = req.body;
+  ticket.type = refundType || ticket.type || 'Pending';
   ticket.status = 'Approved';
+  if (refundType === 'Partial' && requestNewItem) {
+    const newDeliveryId = 'DEL-' + Date.now().toString().slice(-5);
+    deliveries.push({
+      id: newDeliveryId,
+      deliveryId: newDeliveryId,
+      orderNumber: ticket.orderId,
+      customer: ticket.customer,
+      status: 'Pending',
+      proofImage: null,
+      address: ticket.address || '',
+      contact: ticket.contact || ''
+    });
+  }
   req.flash('success', `Refund ${ticket.id} approved.`);
   res.redirect('/admin/customer-service');
 });
 //gul
 const deliveries = [
-  { id: 'ORD-1001', orderNumber: 'ORD-1001', customer: 'Alice', status: 'Out for Delivery', proofImage: null },
-  { id: 'ORD-1002', orderNumber: 'ORD-1002', customer: 'Bob', status: 'Pending', proofImage: null },
-  { id: 'ORD-1003', orderNumber: 'ORD-1003', customer: 'Charlie', status: 'Completed', proofImage: null }
+  { id: 'DEL-001', deliveryId: 'DEL-001', orderNumber: 'ORD-1001', customer: 'Alice', status: 'Out for Delivery', proofImage: null },
+  { id: 'DEL-002', deliveryId: 'DEL-002', orderNumber: 'ORD-1002', customer: 'Bob', status: 'Pending', proofImage: null },
+  { id: 'DEL-003', deliveryId: 'DEL-003', orderNumber: 'ORD-1003', customer: 'Charlie', status: 'Completed', proofImage: null }
 ];
 
 const orders = [
@@ -288,11 +312,21 @@ app.get('/delivery/dashboard', allowRoles(['delivery man']), (req, res) => {
   res.render('delivery-home', { deliveries });
 });
 
-app.get('/delivery/order/:id', allowRoles(['delivery man']), (req, res) => {
-  const delivery = deliveries.find((d) => d.id === req.params.id) || null;
+app.get('/delivery/order/:id', allowRoles(['delivery man', 'admin']), (req, res) => {
+  const delivery = deliveries.find((d) => d.id === req.params.id || d.deliveryId === req.params.id) || null;
   if (!delivery) {
     req.flash('error', 'Order not found.');
     return res.redirect('/delivery/dashboard');
+  }
+  res.render('delivery-order-detail', { delivery });
+});
+
+// Admin-friendly alias to view delivery details without hitting the delivery dashboard redirect.
+app.get('/admin/delivery/:id', allowRoles(['admin']), (req, res) => {
+  const delivery = deliveries.find((d) => d.id === req.params.id || d.deliveryId === req.params.id) || null;
+  if (!delivery) {
+    req.flash('error', 'Order not found.');
+    return res.redirect('/admin/orders');
   }
   res.render('delivery-order-detail', { delivery });
 });
@@ -546,6 +580,46 @@ app.get('/order-tracking', allowRoles(['user']), (req, res) => {
   res.render('order-tracking');
 });
 
+app.get('/support', (_req, res) => {
+  res.render('support');
+});
+
+app.post('/support', upload.array('attachments', 2), (req, res) => {
+  if (!req.session.user || req.session.user.role !== 'user') {
+    req.flash('error', 'Please log in with a user account to submit a ticket.');
+    return res.redirect('/login');
+  }
+  const { orderId, reason, description, address, contact } = req.body;
+  if (!orderId || !reason) {
+    req.flash('error', 'Order number and reason are required.');
+    return res.redirect('/support');
+  }
+  const desc = (description || '').slice(0, 300);
+  const files = (req.files || []).filter((f) => ['image/jpeg', 'image/png'].includes(f.mimetype)).slice(0, 2);
+  const attachments = files.map((f) => ({
+    mimetype: f.mimetype,
+    data: `data:${f.mimetype};base64,${f.buffer.toString('base64')}`
+  }));
+  const ticket = {
+    id: 'RF-' + Date.now().toString().slice(-6),
+    orderId,
+    customer: req.session.user.email,
+    amount: 0,
+    type: 'Pending',
+    reason,
+    description: desc,
+    requestNewItem: false,
+    address: address || '',
+    contact: contact || '',
+    status: 'Open',
+    attachments,
+    createdAt: new Date().toISOString()
+  };
+  refundTickets.push(ticket);
+  req.flash('success', 'Support ticket submitted.');
+  res.redirect('/support');
+});
+
 app.post('/cart/add', (req, res) => {
   if (!req.session.user || req.session.user.role !== 'user') {
     if (req.headers.accept && req.headers.accept.includes('application/json')) {
@@ -613,9 +687,11 @@ app.post('/delivery/add-status', allowRoles(['delivery man']), (req, res) => {
     req.flash('error', 'Order number is required.');
     return res.redirect('/delivery/add-status');
   }
+  const deliveryId = 'DEL-' + Date.now().toString().slice(-5);
   deliveries.push({
-    id: orderNumber,
+    id: deliveryId,
     orderNumber,
+    deliveryId,
     customer: customer || 'Unknown',
     status: status || 'Pending',
     proofImage: null
@@ -632,7 +708,7 @@ app.get('/delivery/update-status', allowRoles(['delivery man']), (req, res) => {
 // POST route for Update Delivery Status
 app.post('/delivery/update-status', allowRoles(['delivery man']), upload.single('proof'), (req, res) => {
   const { id, status } = req.body;
-  const delivery = deliveries.find((d) => d.id === id);
+  const delivery = deliveries.find((d) => d.id === id || d.deliveryId === id);
   if (!delivery) {
     req.flash('error', 'Delivery not found.');
     return res.redirect('/delivery/dashboard');
@@ -643,8 +719,8 @@ app.post('/delivery/update-status', allowRoles(['delivery man']), upload.single(
     return res.redirect('/delivery/dashboard');
   }
 
-  // If delivery man tries to mark as completed, require proof and move to pending confirmation.
-  if (status === 'Completed') {
+  // If delivery man moves to pending confirmation, require proof and hold for admin approval.
+  if (status === 'Pending confirmation') {
     if (!req.file || !['image/jpeg', 'image/png'].includes(req.file.mimetype)) {
       req.flash('error', 'Please upload a .jpg or .png proof image to mark delivery.');
       return res.redirect('/delivery/dashboard');
@@ -652,7 +728,7 @@ app.post('/delivery/update-status', allowRoles(['delivery man']), upload.single(
     const proofImage = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
     delivery.proofImage = proofImage;
     delivery.status = 'Pending confirmation';
-    const linkedOrder = orders.find((o) => o.id === delivery.id);
+    const linkedOrder = orders.find((o) => o.id === delivery.orderNumber);
     if (linkedOrder) linkedOrder.status = 'Pending Delivery Confirmation';
     req.flash('success', 'Proof submitted. Awaiting admin confirmation.');
     return res.redirect('/delivery/dashboard');
