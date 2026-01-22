@@ -23,6 +23,28 @@
         min-height: 100vh;
         padding: 72px 16px 64px;
       }
+      .back-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.9);
+        color: var(--text);
+        text-decoration: none;
+        font-weight: 700;
+        box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12);
+      }
+      .top-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 18px;
+      }
+      .back-link span {
+        font-size: 1.1rem;
+        line-height: 1;
+      }
       .page {
         max-width: 960px;
         margin: 0 auto;
@@ -89,53 +111,58 @@
   </head>
   <body>
     <%- include('partials/header') %>
-    <div class="page card">
-      <h1>Order Dashboard</h1>
-      <p>Review incoming orders and confirm delivery completion.</p>
-      <% if (orders && orders.length) { %>
-        <table>
-          <thead>
-            <tr>
-              <th>Order ID</th>
-              <th>Product</th>
-              <th>Customer</th>
-              <th>Price</th>
-              <th>Qty</th>
-              <th>Status</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            <% orders.forEach(function(order) { %>
+    <div class="page">
+      <div class="top-row">
+        <a class="back-link" href="/admin/dashboard"><span>&larr;</span> Back</a>
+      </div>
+      <div class="card">
+        <h1>Order Dashboard</h1>
+        <p>Review incoming orders and confirm delivery completion.</p>
+        <% if (orders && orders.length) { %>
+          <table>
+            <thead>
               <tr>
-                <td><a href="/admin/orders/<%= order.id %>"><%= order.id %></a></td>
-                <td><%= order.product %></td>
-                <td><%= order.customer %></td>
-                <td>$<%= Number(order.price || 0).toFixed(2) %></td>
-                <td><%= order.qty %></td>
-                <td>
-                  <span class="pill <%= order.status === 'Confirmed' || order.status === 'Completed' ? 'confirmed' : 'pending' %>">
-                    <%= order.status %>
-                  </span>
-                </td>
-                <td>
-                  <% const showConfirm = order.status === 'Pending Delivery Confirmation'; %>
-                  <% if (showConfirm) { %>
-                    <div style="display:flex; flex-direction:column; gap:6px;">
-                      <a class="action" style="text-decoration:none; display:inline-block; text-align:center;" href="/admin/orders/check/<%= order.id %>">Confirm order</a>
-                      <small style="color:#b45309;">Review proof before confirming.</small>
-                    </div>
-                  <% } else { %>
-                    <button class="action" type="button" disabled>Done</button>
-                  <% } %>
-                </td>
+                <th>Order ID</th>
+                <th>Product</th>
+                <th>Customer</th>
+                <th>Price</th>
+                <th>Qty</th>
+                <th>Status</th>
+                <th>Action</th>
               </tr>
-            <% }) %>
-          </tbody>
-        </table>
-      <% } else { %>
-        <p>No orders yet.</p>
-      <% } %>
+            </thead>
+            <tbody>
+              <% orders.forEach(function(order) { %>
+                <tr>
+                  <td><a href="/admin/orders/<%= order.id %>"><%= order.id %></a></td>
+                  <td><%= order.product %></td>
+                  <td><%= order.customer %></td>
+                  <td>$<%= Number(order.price || 0).toFixed(2) %></td>
+                  <td><%= order.qty %></td>
+                  <td>
+                    <span class="pill <%= order.status === 'Confirmed' || order.status === 'Completed' ? 'confirmed' : 'pending' %>">
+                      <%= order.status %>
+                    </span>
+                  </td>
+                  <td>
+                    <% const showConfirm = order.status === 'Pending Delivery Confirmation'; %>
+                    <% if (showConfirm) { %>
+                      <div style="display:flex; flex-direction:column; gap:6px;">
+                        <a class="action" style="text-decoration:none; display:inline-block; text-align:center;" href="/admin/orders/check/<%= order.id %>">Confirm order</a>
+                        <small style="color:#b45309;">Review proof before confirming.</small>
+                      </div>
+                    <% } else { %>
+                      <button class="action" type="button" disabled>Done</button>
+                    <% } %>
+                  </td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        <% } else { %>
+          <p>No orders yet.</p>
+        <% } %>
+      </div>
     </div>
     <%- include('partials/footer') %>
   </body>

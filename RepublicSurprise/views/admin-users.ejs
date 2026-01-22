@@ -23,6 +23,28 @@
         min-height: 100vh;
         padding: 72px 16px 64px;
       }
+      .back-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.9);
+        color: var(--text);
+        text-decoration: none;
+        font-weight: 700;
+        box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12);
+      }
+      .top-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 18px;
+      }
+      .back-link span {
+        font-size: 1.1rem;
+        line-height: 1;
+      }
       .page { max-width: 960px; margin: 0 auto; }
       .card {
         background: var(--card);
@@ -62,37 +84,42 @@
   </head>
   <body>
     <%- include('partials/header') %>
-    <div class="page card">
-      <h1>User Dashboard</h1>
-      <p>View all registered users and their details.</p>
-      <% if (users && users.length) { %>
-        <table>
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Name</th>
-              <th>Email</th>
-              <th>Role</th>
-              <th>Address</th>
-              <th>Contact</th>
-            </tr>
-          </thead>
-          <tbody>
-            <% users.forEach(function(u) { %>
+    <div class="page">
+      <div class="top-row">
+        <a class="back-link" href="/admin/dashboard"><span>&larr;</span> Back</a>
+      </div>
+      <div class="card">
+        <h1>User Dashboard</h1>
+        <p>View all registered users and their details.</p>
+        <% if (users && users.length) { %>
+          <table>
+            <thead>
               <tr>
-                <td><%= u.idx %></td>
-                <td><%= u.name %></td>
-                <td><%= u.email %></td>
-                <td><%= u.role %></td>
-                <td><%= u.address %></td>
-                <td><%= u.contact %></td>
+                <th>#</th>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Address</th>
+                <th>Contact</th>
               </tr>
-            <% }) %>
-          </tbody>
-        </table>
-      <% } else { %>
-        <p>No registered users yet.</p>
-      <% } %>
+            </thead>
+            <tbody>
+              <% users.forEach(function(u) { %>
+                <tr>
+                  <td><%= u.idx %></td>
+                  <td><%= u.name %></td>
+                  <td><%= u.email %></td>
+                  <td><%= u.role %></td>
+                  <td><%= u.address %></td>
+                  <td><%= u.contact %></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        <% } else { %>
+          <p>No registered users yet.</p>
+        <% } %>
+      </div>
     </div>
     <%- include('partials/footer') %>
   </body>

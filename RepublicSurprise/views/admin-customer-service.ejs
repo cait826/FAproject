@@ -23,6 +23,28 @@
         min-height: 100vh;
         padding: 72px 16px 64px;
       }
+      .back-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.9);
+        color: var(--text);
+        text-decoration: none;
+        font-weight: 700;
+        box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12);
+      }
+      .top-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 18px;
+      }
+      .back-link span {
+        font-size: 1.1rem;
+        line-height: 1;
+      }
       .page { max-width: 960px; margin: 0 auto; }
       .card {
         background: var(--card);
@@ -83,46 +105,51 @@
   </head>
   <body>
     <%- include('partials/header') %>
-    <div class="page card">
-      <h1>Customer Service</h1>
-      <p>Manage partial/full refunds and customer support tickets.</p>
-      <% if (tickets && tickets.length) { %>
-        <table>
-          <thead>
-            <tr>
-              <th>Ticket ID</th>
-              <th>Order ID</th>
-              <th>Customer</th>
-              <th>Amount</th>
-              <th>Type</th>
-              <th>Status</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            <% tickets.forEach(function(t) { %>
+    <div class="page">
+      <div class="top-row">
+        <a class="back-link" href="/admin/dashboard"><span>&larr;</span> Back</a>
+      </div>
+      <div class="card">
+        <h1>Customer Service</h1>
+        <p>Manage partial/full refunds and customer support tickets.</p>
+        <% if (tickets && tickets.length) { %>
+          <table>
+            <thead>
               <tr>
-                <td><a href="/admin/customer-service/<%= t.id %>"><%= t.id %></a></td>
-                <td><%= t.orderId %></td>
-                <td><%= t.customer %></td>
-                <td>$<%= Number(t.amount || 0).toFixed(2) %></td>
-                <td><%= t.type %> refund</td>
-                <td>
-                  <% const pillClass = t.status === 'Open' ? 'open' : t.status === 'Approved' ? 'approved' : 'review'; %>
-                  <span class="pill <%= pillClass %>"><%= t.status %></span>
-                </td>
-                <td>
-                  <form method="post" action="/admin/customer-service/approve/<%= t.id %>">
-                    <button class="action" type="submit" <%= t.status === 'Approved' ? 'disabled' : '' %>>Approve</button>
-                  </form>
-                </td>
+                <th>Ticket ID</th>
+                <th>Order ID</th>
+                <th>Customer</th>
+                <th>Amount</th>
+                <th>Type</th>
+                <th>Status</th>
+                <th>Action</th>
               </tr>
-            <% }) %>
-          </tbody>
-        </table>
-      <% } else { %>
-        <p>No customer service tickets yet.</p>
-      <% } %>
+            </thead>
+            <tbody>
+              <% tickets.forEach(function(t) { %>
+                <tr>
+                  <td><a href="/admin/customer-service/<%= t.id %>"><%= t.id %></a></td>
+                  <td><%= t.orderId %></td>
+                  <td><%= t.customer %></td>
+                  <td>$<%= Number(t.amount || 0).toFixed(2) %></td>
+                  <td><%= t.type %> refund</td>
+                  <td>
+                    <% const pillClass = t.status === 'Open' ? 'open' : t.status === 'Approved' ? 'approved' : 'review'; %>
+                    <span class="pill <%= pillClass %>"><%= t.status %></span>
+                  </td>
+                  <td>
+                    <form method="post" action="/admin/customer-service/approve/<%= t.id %>">
+                      <button class="action" type="submit" <%= t.status === 'Approved' ? 'disabled' : '' %>>Approve</button>
+                    </form>
+                  </td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        <% } else { %>
+          <p>No customer service tickets yet.</p>
+        <% } %>
+      </div>
     </div>
     <%- include('partials/footer') %>
   </body>

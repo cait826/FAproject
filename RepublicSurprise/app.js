@@ -12,6 +12,48 @@ const products = [];
 let lastProductId = null;
 const upload = multer({ storage: multer.memoryStorage(), limits: { files: 3 } });
 
+const productFields = [
+  'productName',
+  'productDescription',
+  'mainImageIndex',
+  'enableIndividual',
+  'enableSet',
+  'individualPrice',
+  'individualStock',
+  'setBoxes',
+  'setPrice',
+  'setStock',
+  'active'
+];
+
+const pickProductFields = (source) =>
+  productFields.reduce((acc, key) => {
+    acc[key] = source && Object.prototype.hasOwnProperty.call(source, key) ? source[key] : '';
+    return acc;
+  }, {});
+
+const buildAuditEntry = (action, actor, before, after) => {
+  const beforeSnapshot = before ? pickProductFields(before) : null;
+  const afterSnapshot = after ? pickProductFields(after) : null;
+  const changes = [];
+
+  if (beforeSnapshot && afterSnapshot) {
+    productFields.forEach((key) => {
+      if (beforeSnapshot[key] !== afterSnapshot[key]) {
+        changes.push({ field: key, from: beforeSnapshot[key], to: afterSnapshot[key] });
+      }
+    });
+  }
+
+  return {
+    action,
+    actor: actor || 'system',
+    timestamp: new Date().toISOString(),
+    changes,
+    snapshot: afterSnapshot || beforeSnapshot
+  };
+};
+
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
@@ -271,7 +313,6 @@ const buildProductPayload = (body) => ({
   enableSet: !!body.enableSet,
   individualPrice: body.individualPrice || '',
   individualStock: body.individualStock || '',
-  individualMax: body.individualMax || '',
   setBoxes: body.setBoxes || '',
   setPrice: body.setPrice || '',
   setStock: body.setStock || ''
@@ -280,7 +321,9 @@ const buildProductPayload = (body) => ({
 const createProduct = (body) => ({
   id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
   createdAt: new Date(),
-  ...buildProductPayload(body)
+  ...buildProductPayload(body),
+  active: true,
+  history: []
 });
 
 const validateProductPayload = (body, files) => {
@@ -296,7 +339,6 @@ const validateProductPayload = (body, files) => {
   if (enableIndividual) {
     if (!body.individualPrice) errors.push('Price per box is required.');
     if (!body.individualStock) errors.push('Individual stock quantity is required.');
-    if (!body.individualMax) errors.push('Max quantity per order is required.');
   }
 
   if (enableSet) {
@@ -335,6 +377,7 @@ app.post('/admin/add-product', allowRoles(['admin']), upload.array('images', 3),
     return res.redirect('/admin/add-product');
   }
   const newProduct = createProduct(req.body);
+  newProduct.history.push(buildAuditEntry('created', req.session.user?.email, null, newProduct));
   products.push(newProduct);
   lastProductId = newProduct.id;
   req.flash('success', 'Product saved (demo only).');
@@ -357,10 +400,15 @@ app.post('/admin/update-product', allowRoles(['admin']), upload.array('images', 
   const nextPayload = buildProductPayload(req.body);
   const existingIndex = products.findIndex((item) => item.id === targetId);
   if (existingIndex >= 0) {
-    products[existingIndex] = { ...products[existingIndex], ...nextPayload };
+    const before = products[existingIndex];
+    const updated = { ...before, ...nextPayload, active: before.active !== false };
+    const entry = buildAuditEntry('updated', req.session.user?.email, before, updated);
+    updated.history = [...(before.history || []), entry];
+    products[existingIndex] = updated;
     lastProductId = products[existingIndex].id;
   } else {
     const created = createProduct(req.body);
+    created.history.push(buildAuditEntry('created', req.session.user?.email, null, created));
     products.push(created);
     lastProductId = created.id;
   }
@@ -372,13 +420,53 @@ app.get('/admin/inventory', allowRoles(['admin']), (req, res) => {
   res.render('admin-inventory', { products });
 });
 
-app.post('/admin/delete-product/:id', allowRoles(['admin']), (req, res) => {
+app.get('/admin/product/:id', allowRoles(['admin']), (req, res) => {
+  const { id } = req.params;
+  const product = products.find((item) => item.id === id) || null;
+  if (!product) {
+    req.flash('error', 'Product not found.');
+    return res.redirect('/admin/inventory');
+  }
+  const history = product.history || [];
+  res.render('admin-product-history', { product, history });
+});
+
+app.post('/admin/deactivate-product/:id', allowRoles(['admin']), (req, res) => {
   const { id } = req.params;
   const index = products.findIndex((item) => item.id === id);
   if (index >= 0) {
-    products.splice(index, 1);
-    if (lastProductId === id) lastProductId = products.length ? products[products.length - 1].id : null;
-    req.flash('success', 'Product deleted (demo only).');
+    const before = products[index];
+    if (before.active === false) {
+      req.flash('error', 'Product already deactivated.');
+      return res.redirect('/admin/inventory');
+    }
+    const updated = { ...before, active: false };
+    const entry = buildAuditEntry('deactivated', req.session.user?.email, before, updated);
+    updated.history = [...(before.history || []), entry];
+    products[index] = updated;
+    if (lastProductId === id) lastProductId = products[index].id;
+    req.flash('success', 'Product deactivated (demo only).');
+  } else {
+    req.flash('error', 'Product not found.');
+  }
+  res.redirect('/admin/inventory');
+});
+
+app.post('/admin/reactivate-product/:id', allowRoles(['admin']), (req, res) => {
+  const { id } = req.params;
+  const index = products.findIndex((item) => item.id === id);
+  if (index >= 0) {
+    const before = products[index];
+    if (before.active !== false) {
+      req.flash('error', 'Product already active.');
+      return res.redirect('/admin/inventory');
+    }
+    const updated = { ...before, active: true };
+    const entry = buildAuditEntry('reactivated', req.session.user?.email, before, updated);
+    updated.history = [...(before.history || []), entry];
+    products[index] = updated;
+    if (lastProductId === id) lastProductId = products[index].id;
+    req.flash('success', 'Product reactivated (demo only).');
   } else {
     req.flash('error', 'Product not found.');
   }
