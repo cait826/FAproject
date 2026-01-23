@@ -178,7 +178,7 @@ contract RepublicSurpriseContract {
             : RepublicSurpriseStatus.OutOfStock;
     }
 
-    // Add product (legacy signature kept, but internally also supports v1 features)
+    // Add product 
     function addProduct(
         uint256 id,
         string memory name,
@@ -565,7 +565,7 @@ contract RepublicSurpriseContract {
         emit UserOrderStatusUpdated(id, status);
     }
 
-    // ---------- Refund Tickets (Destinee v1) ----------
+    // ---------- Refund Tickets ----------
     enum RefundType {
         None,
         Full,
@@ -659,12 +659,7 @@ contract RepublicSurpriseContract {
     event LegacyRefundApproved(uint256 orderId, uint256 refundAmount);
     event RefundClaimed(uint256 orderId, address buyer, uint256 refundAmount);
 
-    /**
-     * Legacy function kept: paywithMetamask(orderId, productId)
-     * - Treats as individual purchase qty=1
-     * - Uses individualPriceWei (fallback to priceWei)
-     * - Creates an Order in merged order system
-     */
+
     function paywithMetamask(uint256 orderId, uint256 productId) public payable {
         require(msg.value > 0, "pay > 0");
         require(orders[orderId].id == 0, "order exists");
