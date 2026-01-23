@@ -29,7 +29,7 @@ const productFields = [
   'active'
 ];
 
-const userFields = ['name', 'email', 'role', 'address', 'contact', 'active'];
+const userFields = ['name', 'walletAddress', 'role', 'address', 'contact', 'active'];
 
 const pickProductFields = (source) =>
   productFields.reduce((acc, key) => {
@@ -172,17 +172,16 @@ app.get('/register', (_req, res) => {
 });
 
 app.post('/register', (req, res) => {
-  const { name, email, password, address, contact, role } = req.body;
+  const { name, walletAddress, address, contact, role } = req.body;
   const errors = [];
   if (!name) errors.push('Name is required.');
-  if (!email) errors.push('Email is required.');
-  if (!password) errors.push('Password is required.');
-  if (password && password.length < 6) errors.push('Password must be at least 6 characters.');
+  if (!walletAddress) errors.push('Wallet address is required.');
   if (!address) errors.push('Address is required.');
   if (!contact) errors.push('Contact number is required.');
   if (!role) errors.push('Role is required.');
   const allowedRoles = ['user', 'admin', 'delivery man'];
   if (role && !allowedRoles.includes(role)) errors.push('Invalid role selected.');
+  if (walletAddress && users[walletAddress]) errors.push('Wallet address already exists.');
 
   if (errors.length) {
     errors.forEach((msg) => req.flash('error', msg));
@@ -191,8 +190,7 @@ app.post('/register', (req, res) => {
 
   const newUser = {
     name,
-    email,
-    password,
+    walletAddress,
     address,
     contact,
     role,
@@ -200,9 +198,9 @@ app.post('/register', (req, res) => {
     createdAt: new Date().toISOString(),
     history: []
   };
-  newUser.history.push(buildUserAuditEntry('created', email, null, newUser));
-  users[email] = newUser;
-  req.session.user = { email, role };
+  newUser.history.push(buildUserAuditEntry('created', walletAddress, null, newUser));
+  users[walletAddress] = newUser;
+  req.session.user = { walletAddress, role };
   req.flash('success', 'Registration successful.');
   if (role === 'admin') return res.redirect('/admin/dashboard');
   if (role === 'delivery man') return res.redirect('/delivery/dashboard');
@@ -220,15 +218,15 @@ app.post('/logout', (req, res) => {
 });
 
 app.post('/login', (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) {
-    req.flash('error', 'Email and password are required.');
+  const { walletAddress } = req.body;
+  if (!walletAddress) {
+    req.flash('error', 'Wallet address is required.');
     return res.redirect('/login');
   }
 
-  const user = users[email];
-  if (!user || user.password !== password) {
-    req.flash('error', 'Invalid email or password.');
+  const user = users[walletAddress];
+  if (!user) {
+    req.flash('error', 'Wallet address not found.');
     return res.redirect('/login');
   }
   if (user.active === false) {
@@ -236,7 +234,7 @@ app.post('/login', (req, res) => {
     return res.redirect('/login');
   }
 
-  req.session.user = { email: user.email, role: user.role };
+  req.session.user = { walletAddress: user.walletAddress, role: user.role };
   req.flash('success', 'Logged in successfully.');
   if (user.role === 'admin') return res.redirect('/admin/dashboard');
   if (user.role === 'delivery man') return res.redirect('/delivery/dashboard');
@@ -294,7 +292,7 @@ app.get('/admin/users', allowRoles(['admin']), (_req, res) => {
   const list = Object.values(users).map((u, index) => ({
     idx: index + 1,
     name: u.name,
-    email: u.email,
+    walletAddress: u.walletAddress,
     role: u.role,
     address: u.address,
     contact: u.contact,
@@ -304,9 +302,9 @@ app.get('/admin/users', allowRoles(['admin']), (_req, res) => {
   res.render('admin-users', { users: list });
 });
 
-app.get('/admin/users/history/:email', allowRoles(['admin']), (req, res) => {
-  const email = req.params.email;
-  const user = users[email] || null;
+app.get('/admin/users/history/:walletAddress', allowRoles(['admin']), (req, res) => {
+  const walletAddress = req.params.walletAddress;
+  const user = users[walletAddress] || null;
   if (!user) {
     req.flash('error', 'User not found.');
     return res.redirect('/admin/users');
@@ -315,9 +313,9 @@ app.get('/admin/users/history/:email', allowRoles(['admin']), (req, res) => {
   res.render('admin-user-history', { user, history });
 });
 
-app.get('/admin/users/edit/:email', allowRoles(['admin']), (req, res) => {
-  const email = req.params.email;
-  const user = users[email] || null;
+app.get('/admin/users/edit/:walletAddress', allowRoles(['admin']), (req, res) => {
+  const walletAddress = req.params.walletAddress;
+  const user = users[walletAddress] || null;
   if (!user) {
     req.flash('error', 'User not found.');
     return res.redirect('/admin/users');
@@ -325,56 +323,56 @@ app.get('/admin/users/edit/:email', allowRoles(['admin']), (req, res) => {
   res.render('admin-user-edit', { user });
 });
 
-app.post('/admin/users/edit/:email', allowRoles(['admin']), (req, res) => {
-  const targetEmail = req.params.email;
-  const user = users[targetEmail] || null;
+app.post('/admin/users/edit/:walletAddress', allowRoles(['admin']), (req, res) => {
+  const targetWallet = req.params.walletAddress;
+  const user = users[targetWallet] || null;
   if (!user) {
     req.flash('error', 'User not found.');
     return res.redirect('/admin/users');
   }
-  const { name, email, role, address, contact } = req.body;
+  const { name, walletAddress, role, address, contact } = req.body;
   const errors = [];
   if (!name) errors.push('Name is required.');
-  if (!email) errors.push('Email is required.');
+  if (!walletAddress) errors.push('Wallet address is required.');
   if (!address) errors.push('Address is required.');
   if (!contact) errors.push('Contact number is required.');
   const allowedRoles = ['user', 'admin', 'delivery man'];
   if (!role || !allowedRoles.includes(role)) errors.push('Role is required.');
-  if (email !== targetEmail && users[email]) errors.push('Email already exists.');
+  if (walletAddress !== targetWallet && users[walletAddress]) errors.push('Wallet address already exists.');
 
   if (errors.length) {
     errors.forEach((msg) => req.flash('error', msg));
-    return res.redirect(`/admin/users/edit/${encodeURIComponent(targetEmail)}`);
+    return res.redirect(`/admin/users/edit/${encodeURIComponent(targetWallet)}`);
   }
 
   const updated = {
     ...user,
     name,
-    email,
+    walletAddress,
     role,
     address,
     contact
   };
-  const entry = buildUserAuditEntry('updated', req.session.user?.email, user, updated);
+  const entry = buildUserAuditEntry('updated', req.session.user?.walletAddress, user, updated);
   updated.history = [...(user.history || []), entry];
 
-  if (email !== targetEmail) {
-    delete users[targetEmail];
-    users[email] = updated;
-    if (req.session.user?.email === targetEmail) {
-      req.session.user.email = email;
+  if (walletAddress !== targetWallet) {
+    delete users[targetWallet];
+    users[walletAddress] = updated;
+    if (req.session.user?.walletAddress === targetWallet) {
+      req.session.user.walletAddress = walletAddress;
     }
   } else {
-    users[targetEmail] = updated;
+    users[targetWallet] = updated;
   }
 
   req.flash('success', 'User profile updated (demo only).');
   res.redirect('/admin/users');
 });
 
-app.post('/admin/deactivate-user/:email', allowRoles(['admin']), (req, res) => {
-  const email = req.params.email;
-  const user = users[email] || null;
+app.post('/admin/deactivate-user/:walletAddress', allowRoles(['admin']), (req, res) => {
+  const walletAddress = req.params.walletAddress;
+  const user = users[walletAddress] || null;
   if (!user) {
     req.flash('error', 'User not found.');
     return res.redirect('/admin/users');
@@ -384,16 +382,16 @@ app.post('/admin/deactivate-user/:email', allowRoles(['admin']), (req, res) => {
     return res.redirect('/admin/users');
   }
   const updated = { ...user, active: false };
-  const entry = buildUserAuditEntry('deactivated', req.session.user?.email, user, updated);
+  const entry = buildUserAuditEntry('deactivated', req.session.user?.walletAddress, user, updated);
   updated.history = [...(user.history || []), entry];
-  users[email] = updated;
+  users[walletAddress] = updated;
   req.flash('success', 'User deactivated (demo only).');
   res.redirect('/admin/users');
 });
 
-app.post('/admin/reactivate-user/:email', allowRoles(['admin']), (req, res) => {
-  const email = req.params.email;
-  const user = users[email] || null;
+app.post('/admin/reactivate-user/:walletAddress', allowRoles(['admin']), (req, res) => {
+  const walletAddress = req.params.walletAddress;
+  const user = users[walletAddress] || null;
   if (!user) {
     req.flash('error', 'User not found.');
     return res.redirect('/admin/users');
@@ -403,9 +401,9 @@ app.post('/admin/reactivate-user/:email', allowRoles(['admin']), (req, res) => {
     return res.redirect('/admin/users');
   }
   const updated = { ...user, active: true };
-  const entry = buildUserAuditEntry('reactivated', req.session.user?.email, user, updated);
+  const entry = buildUserAuditEntry('reactivated', req.session.user?.walletAddress, user, updated);
   updated.history = [...(user.history || []), entry];
-  users[email] = updated;
+  users[walletAddress] = updated;
   req.flash('success', 'User reactivated (demo only).');
   res.redirect('/admin/users');
 });
@@ -459,20 +457,20 @@ app.post('/admin/customer-service/approve/:id', allowRoles(['admin']), (req, res
 });
 //gul
 const deliveries = [
-  { id: 'DEL-001', deliveryId: 'DEL-001', orderNumber: 'ORD-1001', customer: 'Alice', status: 'Out for Delivery', proofImage: null },
-  { id: 'DEL-002', deliveryId: 'DEL-002', orderNumber: 'ORD-1002', customer: 'Bob', status: 'Pending', proofImage: null },
-  { id: 'DEL-003', deliveryId: 'DEL-003', orderNumber: 'ORD-1003', customer: 'Charlie', status: 'Completed', proofImage: null }
+  { id: 'DEL-001', deliveryId: 'DEL-001', orderNumber: 'ORD-1001', customer: '0xA1b2c3D4e5F678901234567890abcdef12345678', status: 'Out for Delivery', proofImage: null },
+  { id: 'DEL-002', deliveryId: 'DEL-002', orderNumber: 'ORD-1002', customer: '0xB2c3D4e5F678901234567890abcdef1234567890', status: 'Pending', proofImage: null },
+  { id: 'DEL-003', deliveryId: 'DEL-003', orderNumber: 'ORD-1003', customer: '0xC3d4E5f678901234567890abcdef1234567890Ab', status: 'Completed', proofImage: null }
 ];
 
 const orders = [
-  { id: 'ORD-1001', product: 'Mystery Box A', customer: 'Alice', price: 49.9, qty: 2, status: 'Pending Delivery Confirmation' },
-  { id: 'ORD-1002', product: 'Mystery Box B', customer: 'Bob', price: 59.9, qty: 1, status: 'Pending Delivery Confirmation' },
-  { id: 'ORD-1003', product: 'Mystery Box C', customer: 'Charlie', price: 39.9, qty: 3, status: 'Confirmed' }
+  { id: 'ORD-1001', product: 'Mystery Box A', customer: '0xA1b2c3D4e5F678901234567890abcdef12345678', price: 49.9, qty: 2, status: 'Pending Delivery Confirmation' },
+  { id: 'ORD-1002', product: 'Mystery Box B', customer: '0xB2c3D4e5F678901234567890abcdef1234567890', price: 59.9, qty: 1, status: 'Pending Delivery Confirmation' },
+  { id: 'ORD-1003', product: 'Mystery Box C', customer: '0xC3d4E5f678901234567890abcdef1234567890Ab', price: 39.9, qty: 3, status: 'Confirmed' }
 ];
 
 const refundTickets = [
-  { id: 'RF-2001', customer: 'Dana', orderId: 'ORD-0999', amount: 29.9, type: 'Partial', status: 'Open' },
-  { id: 'RF-2002', customer: 'Eli', orderId: 'ORD-0998', amount: 59.9, type: 'Full', status: 'In Review' }
+  { id: 'RF-2001', customer: '0xD4e5F678901234567890abcdef1234567890AbCd', orderId: 'ORD-0999', amount: 29.9, type: 'Partial', status: 'Open' },
+  { id: 'RF-2002', customer: '0xE5f678901234567890abcdef1234567890AbCdE', orderId: 'ORD-0998', amount: 59.9, type: 'Full', status: 'In Review' }
 ];
 
 
@@ -580,7 +578,7 @@ app.post('/admin/add-product', allowRoles(['admin']), upload.array('images', 3),
     return res.redirect('/admin/add-product');
   }
   const newProduct = createProduct(req.body);
-  newProduct.history.push(buildAuditEntry('created', req.session.user?.email, null, newProduct));
+  newProduct.history.push(buildAuditEntry('created', req.session.user?.walletAddress, null, newProduct));
   products.push(newProduct);
   lastProductId = newProduct.id;
   req.flash('success', 'Product saved (demo only).');
@@ -605,13 +603,13 @@ app.post('/admin/update-product', allowRoles(['admin']), upload.array('images', 
   if (existingIndex >= 0) {
     const before = products[existingIndex];
     const updated = { ...before, ...nextPayload, active: before.active !== false };
-    const entry = buildAuditEntry('updated', req.session.user?.email, before, updated);
+    const entry = buildAuditEntry('updated', req.session.user?.walletAddress, before, updated);
     updated.history = [...(before.history || []), entry];
     products[existingIndex] = updated;
     lastProductId = products[existingIndex].id;
   } else {
     const created = createProduct(req.body);
-    created.history.push(buildAuditEntry('created', req.session.user?.email, null, created));
+    created.history.push(buildAuditEntry('created', req.session.user?.walletAddress, null, created));
     products.push(created);
     lastProductId = created.id;
   }
@@ -644,7 +642,7 @@ app.post('/admin/deactivate-product/:id', allowRoles(['admin']), (req, res) => {
       return res.redirect('/admin/inventory');
     }
     const updated = { ...before, active: false };
-    const entry = buildAuditEntry('deactivated', req.session.user?.email, before, updated);
+    const entry = buildAuditEntry('deactivated', req.session.user?.walletAddress, before, updated);
     updated.history = [...(before.history || []), entry];
     products[index] = updated;
     if (lastProductId === id) lastProductId = products[index].id;
@@ -665,7 +663,7 @@ app.post('/admin/reactivate-product/:id', allowRoles(['admin']), (req, res) => {
       return res.redirect('/admin/inventory');
     }
     const updated = { ...before, active: true };
-    const entry = buildAuditEntry('reactivated', req.session.user?.email, before, updated);
+    const entry = buildAuditEntry('reactivated', req.session.user?.walletAddress, before, updated);
     updated.history = [...(before.history || []), entry];
     products[index] = updated;
     if (lastProductId === id) lastProductId = products[index].id;
@@ -774,7 +772,7 @@ app.post('/support', upload.array('attachments', 2), (req, res) => {
   const ticket = {
     id: 'RF-' + Date.now().toString().slice(-6),
     orderId,
-    customer: req.session.user.email,
+    customer: req.session.user.walletAddress,
     amount: 0,
     type: 'Pending',
     reason,

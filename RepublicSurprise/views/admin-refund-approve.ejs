@@ -59,7 +59,7 @@
     <%- include('partials/header') %>
     <div class="card">
       <h1>Approve Ticket <%= ticket.id %></h1>
-      <p>Order: <%= ticket.orderId %> · Customer: <%= ticket.customer %></p>
+      <p>Order: <%= ticket.orderId %> · Customer Wallet: <%= ticket.customer %></p>
       <form method="post" action="/admin/customer-service/approve/<%= ticket.id %>">
         <label>Refund Type
           <select name="refundType" id="refundType" required>

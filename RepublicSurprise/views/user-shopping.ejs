@@ -399,7 +399,7 @@
                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
                 <circle cx="12" cy="7" r="4" />
               </svg>
-              <span><%= user && user.email ? user.email : (user ? 'Account' : 'Guest') %></span>
+              <span><%= user && user.walletAddress ? user.walletAddress : (user ? 'Account' : 'Guest') %></span>
             </button>
             <a class="icon-btn cart-badge" href="/cart" title="Cart">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

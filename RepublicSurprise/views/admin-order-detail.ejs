@@ -83,7 +83,7 @@
       <h1>Order <%= order.id %></h1>
       <p>Order details and delivery confirmation.</p>
       <div class="row"><div class="label">Product</div><div><%= order.product %></div></div>
-      <div class="row"><div class="label">Customer</div><div><%= order.customer %></div></div>
+      <div class="row"><div class="label">Customer Wallet</div><div><%= order.customer %></div></div>
       <div class="row"><div class="label">Price</div><div>$<%= Number(order.price || 0).toFixed(2) %></div></div>
       <div class="row"><div class="label">Quantity</div><div><%= order.qty %></div></div>
       <div class="row"><div class="label">Status</div>

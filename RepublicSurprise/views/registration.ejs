@@ -104,7 +104,7 @@
     <%- include('partials/header') %>
     <div class="card">
       <h1>Create your account</h1>
-      <p>Fill in your details to register for Republic Surprise.</p>
+      <p>Connect your MetaMask wallet and fill in your details to register.</p>
       <% if (errorMessages && errorMessages.length) { %>
         <% errorMessages.forEach(function(msg) { %>
           <div class="flash error"><%= msg %></div>
@@ -121,13 +121,10 @@
           <input type="text" name="name" required placeholder="Jane Doe" />
         </label>
         <label>
-          Email
-          <input type="email" name="email" required placeholder="you@example.com" />
+          Wallet Address
+          <input type="text" id="walletAddress" name="walletAddress" required placeholder="0x..." readonly />
         </label>
-        <label>
-          Password (min 6 characters)
-          <input type="password" name="password" minlength="6" required placeholder="******" />
-        </label>
+        <button type="button" id="connectWallet">Connect MetaMask</button>
         <label>
           Address
           <input type="text" name="address" required placeholder="123 Toy Street" />
@@ -153,16 +150,41 @@
     <script>
       const form = document.getElementById('registrationForm');
       const statusEl = document.getElementById('status');
+      const connectBtn = document.getElementById('connectWallet');
+      const walletInput = document.getElementById('walletAddress');
 
+      const setStatus = (msg, isError) => {
+        statusEl.textContent = msg || '';
+        statusEl.className = isError ? 'status error' : 'status';
+      };
+
+      const connectWallet = async () => {
+        if (!window.ethereum) {
+          setStatus('MetaMask not detected. Please install MetaMask.', true);
+          return;
+        }
+        try {
+          setStatus('Requesting wallet...', false);
+          const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+          const account = (accounts && accounts[0]) || '';
+          if (!account) {
+            setStatus('No wallet selected.', true);
+            return;
+          }
+          walletInput.value = account;
+          setStatus('Wallet connected.', false);
+        } catch (err) {
+          setStatus(err && err.message ? err.message : 'Unable to connect wallet.', true);
+        }
+      };
+
+      connectBtn.addEventListener('click', connectWallet);
       form.addEventListener('submit', (e) => {
-        const password = form.password.value || '';
-        if (password.length < 6) {
+        if (!walletInput.value) {
           e.preventDefault();
-          statusEl.textContent = 'Password must be at least 6 characters.';
-          statusEl.className = 'status error';
+          setStatus('Wallet address is required.', true);
         } else {
-          statusEl.textContent = '';
-          statusEl.className = 'status';
+          setStatus('', false);
         }
       });
     </script>

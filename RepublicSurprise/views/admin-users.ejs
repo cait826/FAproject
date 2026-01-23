@@ -143,7 +143,7 @@
               <tr>
                 <th>#</th>
                 <th>Name</th>
-                <th>Email</th>
+                <th>Wallet</th>
                 <th>Role</th>
                 <th>Address</th>
                 <th>Contact</th>
@@ -155,10 +155,10 @@
               <% users.forEach(function(u) { %>
                 <tr>
                   <td>
-                    <a class="index-link" href="/admin/users/history/<%= encodeURIComponent(u.email) %>"><%= u.idx %></a>
+                    <a class="index-link" href="/admin/users/history/<%= encodeURIComponent(u.walletAddress) %>"><%= u.idx %></a>
                   </td>
                   <td><%= u.name %></td>
-                  <td><%= u.email %></td>
+                  <td><%= u.walletAddress %></td>
                   <td><%= u.role %></td>
                   <td><%= u.address %></td>
                   <td><%= u.contact %></td>
@@ -169,13 +169,13 @@
                   </td>
                   <td>
                     <div class="actions">
-                      <a class="btn-link" href="/admin/users/edit/<%= encodeURIComponent(u.email) %>">Edit</a>
+                      <a class="btn-link" href="/admin/users/edit/<%= encodeURIComponent(u.walletAddress) %>">Edit</a>
                       <% if (u.active) { %>
-                        <form action="/admin/deactivate-user/<%= encodeURIComponent(u.email) %>" method="post">
+                        <form action="/admin/deactivate-user/<%= encodeURIComponent(u.walletAddress) %>" method="post">
                           <button class="btn danger" type="submit">Deactivate</button>
                         </form>
                       <% } else { %>
-                        <form action="/admin/reactivate-user/<%= encodeURIComponent(u.email) %>" method="post">
+                        <form action="/admin/reactivate-user/<%= encodeURIComponent(u.walletAddress) %>" method="post">
                           <button class="btn success" type="submit">Reactivate</button>
                         </form>
                       <% } %>

@@ -67,7 +67,7 @@
       <h1>Refund <%= ticket.id %></h1>
       <p>Review and approve refund requests.</p>
       <div class="row"><div class="label">Order ID</div><div><%= ticket.orderId %></div></div>
-      <div class="row"><div class="label">Customer</div><div><%= ticket.customer %></div></div>
+      <div class="row"><div class="label">Customer Wallet</div><div><%= ticket.customer %></div></div>
       <div class="row"><div class="label">Amount</div><div>$<%= Number(ticket.amount || 0).toFixed(2) %></div></div>
       <div class="row"><div class="label">Type</div><div><%= ticket.type %> refund</div></div>
       <div class="row"><div class="label">Status</div><div><%= ticket.status %></div></div>
