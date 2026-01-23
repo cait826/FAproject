@@ -2,6 +2,12 @@
 pragma solidity ^0.8.19;
 
 contract RepublicSurpriseContract {
+    // ---------- Stock ----------
+    enum RepublicSurpriseStatus {
+        InStock,
+        OutOfStock
+    }
+
     // ---------- Admin ----------
     address public admin;
 
@@ -17,10 +23,13 @@ contract RepublicSurpriseContract {
     }
 
     string public companyName;
+    uint256 public productCount;
+    uint256 public RepublicSurpriseCount;
 
     constructor() {
         companyName = "Republic Surprise Shop";
         admin = msg.sender;
+        RepublicSurpriseCount = 0;
     }
 
     // Product data and sale configuration (individual/set)
@@ -41,6 +50,7 @@ contract RepublicSurpriseContract {
 
     // Product catalog
     mapping(uint => Product) public products;
+    mapping(uint => RepublicSurpriseStatus) public productInventoryStatus;
 
     // Product audit record (tracks add/update/status changes)
     struct ProductAudit {
@@ -96,6 +106,10 @@ contract RepublicSurpriseContract {
             setBoxes
         );
 
+        productCount += 1;
+        RepublicSurpriseCount = productCount;
+        _updateInventoryStatus(id);
+
         _logProductAudit(id, "ADD_PRODUCT");
         emit ProductAdded(id, name, priceWei, enableIndividual, enableSet);
     }
@@ -135,6 +149,7 @@ contract RepublicSurpriseContract {
         products[id].setStock = setStock;
         products[id].setBoxes = setBoxes;
 
+        _updateInventoryStatus(id);
         _logProductAudit(id, "UPDATE_PRODUCT");
         emit ProductUpdated(id, name, priceWei, enableIndividual, enableSet);
     }
@@ -203,6 +218,14 @@ contract RepublicSurpriseContract {
             require(setStock == 0, "Set stock must be 0");
             require(setBoxes == 0, "Set boxes must be 0");
         }
+    }
+
+    function _updateInventoryStatus(uint id) internal {
+        Product storage p = products[id];
+        bool hasStock = (p.enableIndividual && p.individualStock > 0) || (p.enableSet && p.setStock > 0);
+        productInventoryStatus[id] = hasStock
+            ? RepublicSurpriseStatus.InStock
+            : RepublicSurpriseStatus.OutOfStock;
     }
 
     // ---------- Users (on-chain status only) ----------
