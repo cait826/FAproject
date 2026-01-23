@@ -11,9 +11,9 @@ contract RepublicSurpriseContract {
     }
 
     // ---------- Product ----------
-    enum RepublicSurpriseStatus {
-        InStock,
-        OutOfStock
+    enum ProductStatus {
+        Active,
+        Inactive
     }
 
     string public companyName;
@@ -23,23 +23,228 @@ contract RepublicSurpriseContract {
         admin = msg.sender;
     }
 
+    // Product data and sale configuration (individual/set)
     struct Product {
         uint id;
         string name;
         string description;
-        uint price; // wei
-        RepublicSurpriseStatus status;
+        uint priceWei;
+        ProductStatus status;
+        bool enableIndividual;
+        bool enableSet;
+        uint individualPriceWei;
+        uint individualStock;
+        uint setPriceWei;
+        uint setStock;
+        uint setBoxes;
     }
 
+    // Product catalog
     mapping(uint => Product) public products;
 
+    // Product audit record (tracks add/update/status changes)
+    struct ProductAudit {
+        uint timestamp;
+        address actor;
+        string action;
+    }
+
+    // Product edit log (audit trail)
+    mapping(uint => ProductAudit[]) private productAudits;
+
+    event ProductAdded(uint indexed id, string name, uint priceWei, bool enableIndividual, bool enableSet);
+    event ProductUpdated(uint indexed id, string name, uint priceWei, bool enableIndividual, bool enableSet);
+    event ProductStatusChanged(uint indexed id, ProductStatus status);
+    event ProductAuditLogged(uint indexed id, string action, address actor);
+
+    // Add product (admin only)
     function addProduct(
         uint id,
         string memory name,
         string memory description,
-        uint price
+        uint priceWei,
+        bool enableIndividual,
+        bool enableSet,
+        uint individualPriceWei,
+        uint individualStock,
+        uint setPriceWei,
+        uint setStock,
+        uint setBoxes
     ) public onlyAdmin {
-        products[id] = Product(id, name, description, price, RepublicSurpriseStatus.InStock);
+        require(products[id].id == 0, "Product exists");
+        _validateBlindBoxConfig(
+            enableIndividual,
+            enableSet,
+            individualPriceWei,
+            individualStock,
+            setPriceWei,
+            setStock,
+            setBoxes
+        );
+        products[id] = Product(
+            id,
+            name,
+            description,
+            priceWei,
+            ProductStatus.Active,
+            enableIndividual,
+            enableSet,
+            individualPriceWei,
+            individualStock,
+            setPriceWei,
+            setStock,
+            setBoxes
+        );
+
+        _logProductAudit(id, "ADD_PRODUCT");
+        emit ProductAdded(id, name, priceWei, enableIndividual, enableSet);
+    }
+
+    // Update product details and sale configuration (admin only)
+    function updateProduct(
+        uint id,
+        string memory name,
+        string memory description,
+        uint priceWei,
+        bool enableIndividual,
+        bool enableSet,
+        uint individualPriceWei,
+        uint individualStock,
+        uint setPriceWei,
+        uint setStock,
+        uint setBoxes
+    ) public onlyAdmin {
+        require(products[id].id != 0, "Product not found");
+        _validateBlindBoxConfig(
+            enableIndividual,
+            enableSet,
+            individualPriceWei,
+            individualStock,
+            setPriceWei,
+            setStock,
+            setBoxes
+        );
+        products[id].name = name;
+        products[id].description = description;
+        products[id].priceWei = priceWei;
+        products[id].enableIndividual = enableIndividual;
+        products[id].enableSet = enableSet;
+        products[id].individualPriceWei = individualPriceWei;
+        products[id].individualStock = individualStock;
+        products[id].setPriceWei = setPriceWei;
+        products[id].setStock = setStock;
+        products[id].setBoxes = setBoxes;
+
+        _logProductAudit(id, "UPDATE_PRODUCT");
+        emit ProductUpdated(id, name, priceWei, enableIndividual, enableSet);
+    }
+
+    // Deactivate product (admin only)
+    function deactivateProduct(uint id) public onlyAdmin {
+        require(products[id].id != 0, "Product not found");
+        products[id].status = ProductStatus.Inactive;
+
+        _logProductAudit(id, "DEACTIVATE_PRODUCT");
+        emit ProductStatusChanged(id, ProductStatus.Inactive);
+    }
+
+    // Reactivate product (admin only)
+    function reactivateProduct(uint id) public onlyAdmin {
+        require(products[id].id != 0, "Product not found");
+        products[id].status = ProductStatus.Active;
+
+        _logProductAudit(id, "REACTIVATE_PRODUCT");
+        emit ProductStatusChanged(id, ProductStatus.Active);
+    }
+
+    // Product edit log count
+    function getProductAuditCount(uint id) public view returns (uint) {
+        return productAudits[id].length;
+    }
+
+    // Product edit log entry
+    function getProductAudit(uint id, uint index)
+        public
+        view
+        returns (uint timestamp, address actor, string memory action)
+    {
+        ProductAudit storage a = productAudits[id][index];
+        return (a.timestamp, a.actor, a.action);
+    }
+
+    function _logProductAudit(uint id, string memory action) internal {
+        productAudits[id].push(ProductAudit(block.timestamp, msg.sender, action));
+        emit ProductAuditLogged(id, action, msg.sender);
+    }
+
+    function _validateBlindBoxConfig(
+        bool enableIndividual,
+        bool enableSet,
+        uint individualPriceWei,
+        uint individualStock,
+        uint setPriceWei,
+        uint setStock,
+        uint setBoxes
+    ) internal pure {
+        require(enableIndividual || enableSet, "Select at least one purchase type");
+        if (enableIndividual) {
+            require(individualPriceWei > 0, "Individual price required");
+            require(individualStock > 0, "Individual stock required");
+        } else {
+            require(individualPriceWei == 0, "Individual price must be 0");
+            require(individualStock == 0, "Individual stock must be 0");
+        }
+        if (enableSet) {
+            require(setPriceWei > 0, "Set price required");
+            require(setStock > 0, "Set stock required");
+            require(setBoxes > 0, "Set boxes required");
+        } else {
+            require(setPriceWei == 0, "Set price must be 0");
+            require(setStock == 0, "Set stock must be 0");
+            require(setBoxes == 0, "Set boxes must be 0");
+        }
+    }
+
+    // ---------- Users (on-chain status only) ----------
+    struct UserProfile {
+        bool exists;
+        bool active;
+        bytes32 profileHash;
+    }
+
+    // User profiles (on-chain status + off-chain profile hash)
+    mapping(address => UserProfile) public users;
+
+    event UserRegistered(address indexed user, bytes32 profileHash);
+    event UserProfileUpdated(address indexed user, bytes32 profileHash);
+    event UserStatusChanged(address indexed user, bool active);
+
+    // User profile: register (admin only)
+    function registerUser(address user, bytes32 profileHash) public onlyAdmin {
+        require(!users[user].exists, "User exists");
+        users[user] = UserProfile(true, true, profileHash);
+        emit UserRegistered(user, profileHash);
+    }
+
+    // User profile: edit/update (admin only)
+    function updateUserProfile(address user, bytes32 profileHash) public onlyAdmin {
+        require(users[user].exists, "User not found");
+        users[user].profileHash = profileHash;
+        emit UserProfileUpdated(user, profileHash);
+    }
+
+    // User profile: deactivate (admin only)
+    function deactivateUser(address user) public onlyAdmin {
+        require(users[user].exists, "User not found");
+        users[user].active = false;
+        emit UserStatusChanged(user, false);
+    }
+
+    // User profile: reactivate (admin only)
+    function reactivateUser(address user) public onlyAdmin {
+        require(users[user].exists, "User not found");
+        users[user].active = true;
+        emit UserStatusChanged(user, true);
     }
 
     // ---------- Payment ----------
@@ -81,7 +286,7 @@ contract RepublicSurpriseContract {
         require(msg.value > 0, "pay > 0");
         require(orders[orderId].orderId == 0, "order exists");
         require(products[productId].id != 0, "product not found");
-        require(msg.value == products[productId].price, "incorrect amount");
+        require(msg.value == products[productId].priceWei, "incorrect amount");
 
         payments[orderId] = Payment(msg.sender, msg.value, 0, false);
         orders[orderId] = Order(orderId, "", "", OrderStatus.Paid);
