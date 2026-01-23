@@ -270,6 +270,99 @@ contract RepublicSurpriseContract {
         emit UserStatusChanged(user, true);
     }
 
+    // ---------- Cart (user side) ----------
+    struct CartItem {
+        uint productId;
+        uint quantity;
+    }
+
+    mapping(address => CartItem[]) private carts;
+
+    event CartItemAdded(address indexed buyer, uint productId, uint quantity);
+    event CartItemRemoved(address indexed buyer, uint productId);
+    event CartCleared(address indexed buyer);
+
+    function addToCart(uint productId, uint quantity) external {
+        require(quantity > 0, "quantity must be > 0");
+        require(products[productId].id != 0, "product not found");
+        carts[msg.sender].push(CartItem(productId, quantity));
+        emit CartItemAdded(msg.sender, productId, quantity);
+    }
+
+    function removeFromCart(uint index) external {
+        CartItem[] storage cart = carts[msg.sender];
+        require(index < cart.length, "bad index");
+        uint productId = cart[index].productId;
+        cart[index] = cart[cart.length - 1];
+        cart.pop();
+        emit CartItemRemoved(msg.sender, productId);
+    }
+
+    function clearCart() external {
+        delete carts[msg.sender];
+        emit CartCleared(msg.sender);
+    }
+
+    function getCart(address buyer) external view returns (CartItem[] memory) {
+        return carts[buyer];
+    }
+
+    function getCartTotal(address buyer) public view returns (uint total) {
+        CartItem[] storage cart = carts[buyer];
+        for (uint i = 0; i < cart.length; i++) {
+            Product memory product = products[cart[i].productId];
+            total += product.priceWei * cart[i].quantity;
+        }
+    }
+
+    // ---------- Order Tracking (user side) ----------
+    enum UserOrderStatus {
+        Placed,
+        Paid,
+        Shipped,
+        Delivered,
+        Completed,
+        Cancelled
+    }
+
+    struct UserOrder {
+        uint id;
+        address buyer;
+        uint totalAmount;
+        UserOrderStatus status;
+        uint createdAt;
+    }
+
+    mapping(uint => UserOrder) public userOrders;
+    mapping(address => uint[]) public userOrdersByUser;
+    uint public nextUserOrderId;
+
+    event UserOrderCreated(uint indexed orderId, address indexed buyer, uint totalAmount);
+    event UserOrderStatusUpdated(uint indexed orderId, UserOrderStatus status);
+
+    function createUserOrder(uint totalAmount) external {
+        uint orderId = nextUserOrderId;
+        nextUserOrderId += 1;
+
+        userOrders[orderId] = UserOrder({
+            id: orderId,
+            buyer: msg.sender,
+            totalAmount: totalAmount,
+            status: UserOrderStatus.Placed,
+            createdAt: block.timestamp
+        });
+        userOrdersByUser[msg.sender].push(orderId);
+
+        emit UserOrderCreated(orderId, msg.sender, totalAmount);
+    }
+
+    function updateUserOrderStatus(uint orderId, UserOrderStatus status) external onlyAdmin {
+        UserOrder storage order = userOrders[orderId];
+        require(order.buyer != address(0), "order not found");
+        order.status = status;
+        emit UserOrderStatusUpdated(orderId, status);
+    }
+
     // ---------- Payment ----------
     struct Payment {
         address buyer;
