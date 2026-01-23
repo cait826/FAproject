@@ -3,6 +3,7 @@ const path = require('path');
 const session = require('express-session');
 const flash = require('connect-flash');
 const multer = require('multer');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = 3000;
@@ -28,8 +29,16 @@ const productFields = [
   'active'
 ];
 
+const userFields = ['name', 'email', 'role', 'address', 'contact', 'active'];
+
 const pickProductFields = (source) =>
   productFields.reduce((acc, key) => {
+    acc[key] = source && Object.prototype.hasOwnProperty.call(source, key) ? source[key] : '';
+    return acc;
+  }, {});
+
+const pickUserFields = (source) =>
+  userFields.reduce((acc, key) => {
     acc[key] = source && Object.prototype.hasOwnProperty.call(source, key) ? source[key] : '';
     return acc;
   }, {});
@@ -38,6 +47,7 @@ const buildAuditEntry = (action, actor, before, after) => {
   const beforeSnapshot = before ? pickProductFields(before) : null;
   const afterSnapshot = after ? pickProductFields(after) : null;
   const changes = [];
+  const timestamp = new Date().toISOString();
 
   if (beforeSnapshot && afterSnapshot) {
     productFields.forEach((key) => {
@@ -47,12 +57,45 @@ const buildAuditEntry = (action, actor, before, after) => {
     });
   }
 
+  const snapshot = afterSnapshot || beforeSnapshot;
+  const payload = JSON.stringify({ action, actor: actor || 'system', timestamp, changes, snapshot });
+  const hash = crypto.createHash('sha256').update(payload).digest('hex');
+
   return {
     action,
     actor: actor || 'system',
-    timestamp: new Date().toISOString(),
+    timestamp,
     changes,
-    snapshot: afterSnapshot || beforeSnapshot
+    snapshot,
+    hash
+  };
+};
+
+const buildUserAuditEntry = (action, actor, before, after) => {
+  const beforeSnapshot = before ? pickUserFields(before) : null;
+  const afterSnapshot = after ? pickUserFields(after) : null;
+  const changes = [];
+  const timestamp = new Date().toISOString();
+
+  if (beforeSnapshot && afterSnapshot) {
+    userFields.forEach((key) => {
+      if (beforeSnapshot[key] !== afterSnapshot[key]) {
+        changes.push({ field: key, from: beforeSnapshot[key], to: afterSnapshot[key] });
+      }
+    });
+  }
+
+  const snapshot = afterSnapshot || beforeSnapshot;
+  const payload = JSON.stringify({ action, actor: actor || 'system', timestamp, changes, snapshot });
+  const hash = crypto.createHash('sha256').update(payload).digest('hex');
+
+  return {
+    action,
+    actor: actor || 'system',
+    timestamp,
+    changes,
+    snapshot,
+    hash
   };
 };
 
@@ -146,7 +189,19 @@ app.post('/register', (req, res) => {
     return res.redirect('/register');
   }
 
-  users[email] = { name, email, password, address, contact, role };
+  const newUser = {
+    name,
+    email,
+    password,
+    address,
+    contact,
+    role,
+    active: true,
+    createdAt: new Date().toISOString(),
+    history: []
+  };
+  newUser.history.push(buildUserAuditEntry('created', email, null, newUser));
+  users[email] = newUser;
   req.session.user = { email, role };
   req.flash('success', 'Registration successful.');
   if (role === 'admin') return res.redirect('/admin/dashboard');
@@ -174,6 +229,10 @@ app.post('/login', (req, res) => {
   const user = users[email];
   if (!user || user.password !== password) {
     req.flash('error', 'Invalid email or password.');
+    return res.redirect('/login');
+  }
+  if (user.active === false) {
+    req.flash('error', 'This account is deactivated. Please contact support.');
     return res.redirect('/login');
   }
 
@@ -238,9 +297,117 @@ app.get('/admin/users', allowRoles(['admin']), (_req, res) => {
     email: u.email,
     role: u.role,
     address: u.address,
-    contact: u.contact
+    contact: u.contact,
+    active: u.active !== false,
+    historyCount: (u.history || []).length
   }));
   res.render('admin-users', { users: list });
+});
+
+app.get('/admin/users/history/:email', allowRoles(['admin']), (req, res) => {
+  const email = req.params.email;
+  const user = users[email] || null;
+  if (!user) {
+    req.flash('error', 'User not found.');
+    return res.redirect('/admin/users');
+  }
+  const history = user.history || [];
+  res.render('admin-user-history', { user, history });
+});
+
+app.get('/admin/users/edit/:email', allowRoles(['admin']), (req, res) => {
+  const email = req.params.email;
+  const user = users[email] || null;
+  if (!user) {
+    req.flash('error', 'User not found.');
+    return res.redirect('/admin/users');
+  }
+  res.render('admin-user-edit', { user });
+});
+
+app.post('/admin/users/edit/:email', allowRoles(['admin']), (req, res) => {
+  const targetEmail = req.params.email;
+  const user = users[targetEmail] || null;
+  if (!user) {
+    req.flash('error', 'User not found.');
+    return res.redirect('/admin/users');
+  }
+  const { name, email, role, address, contact } = req.body;
+  const errors = [];
+  if (!name) errors.push('Name is required.');
+  if (!email) errors.push('Email is required.');
+  if (!address) errors.push('Address is required.');
+  if (!contact) errors.push('Contact number is required.');
+  const allowedRoles = ['user', 'admin', 'delivery man'];
+  if (!role || !allowedRoles.includes(role)) errors.push('Role is required.');
+  if (email !== targetEmail && users[email]) errors.push('Email already exists.');
+
+  if (errors.length) {
+    errors.forEach((msg) => req.flash('error', msg));
+    return res.redirect(`/admin/users/edit/${encodeURIComponent(targetEmail)}`);
+  }
+
+  const updated = {
+    ...user,
+    name,
+    email,
+    role,
+    address,
+    contact
+  };
+  const entry = buildUserAuditEntry('updated', req.session.user?.email, user, updated);
+  updated.history = [...(user.history || []), entry];
+
+  if (email !== targetEmail) {
+    delete users[targetEmail];
+    users[email] = updated;
+    if (req.session.user?.email === targetEmail) {
+      req.session.user.email = email;
+    }
+  } else {
+    users[targetEmail] = updated;
+  }
+
+  req.flash('success', 'User profile updated (demo only).');
+  res.redirect('/admin/users');
+});
+
+app.post('/admin/deactivate-user/:email', allowRoles(['admin']), (req, res) => {
+  const email = req.params.email;
+  const user = users[email] || null;
+  if (!user) {
+    req.flash('error', 'User not found.');
+    return res.redirect('/admin/users');
+  }
+  if (user.active === false) {
+    req.flash('error', 'User already deactivated.');
+    return res.redirect('/admin/users');
+  }
+  const updated = { ...user, active: false };
+  const entry = buildUserAuditEntry('deactivated', req.session.user?.email, user, updated);
+  updated.history = [...(user.history || []), entry];
+  users[email] = updated;
+  req.flash('success', 'User deactivated (demo only).');
+  res.redirect('/admin/users');
+});
+
+app.post('/admin/reactivate-user/:email', allowRoles(['admin']), (req, res) => {
+  const email = req.params.email;
+  const user = users[email] || null;
+  if (!user) {
+    req.flash('error', 'User not found.');
+    return res.redirect('/admin/users');
+  }
+  if (user.active !== false) {
+    req.flash('error', 'User already active.');
+    return res.redirect('/admin/users');
+  }
+  const updated = { ...user, active: true };
+  const entry = buildUserAuditEntry('reactivated', req.session.user?.email, user, updated);
+  updated.history = [...(user.history || []), entry];
+  users[email] = updated;
+  req.flash('success', 'User reactivated (demo only).');
+  res.redirect('/admin/users');
 });
 
 app.get('/admin/customer-service', allowRoles(['admin']), (_req, res) => {

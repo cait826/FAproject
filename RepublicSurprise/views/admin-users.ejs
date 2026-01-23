@@ -65,8 +65,54 @@
         padding: 12px 14px;
         background: #fefaf2;
         border: 1px solid var(--line);
+        vertical-align: top;
       }
       th { background: #ffe8c9; }
+      .status {
+        display: inline-flex;
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 0.85rem;
+        font-weight: 700;
+      }
+      .status.active { background: rgba(46, 196, 182, 0.18); color: #0f766e; }
+      .status.inactive { background: rgba(255, 107, 107, 0.18); color: #b91c1c; }
+      .actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .btn-link, .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        border-radius: 999px;
+        border: none;
+        font-weight: 700;
+        cursor: pointer;
+        text-decoration: none;
+        background: #ffffff;
+        color: var(--text);
+        box-shadow: 0 6px 14px rgba(15, 23, 42, 0.12);
+      }
+      .btn.danger { background: rgba(255, 107, 107, 0.18); color: #b91c1c; }
+      .btn.success { background: rgba(46, 196, 182, 0.18); color: #0f766e; }
+      .actions .btn-link,
+      .actions .btn {
+        width: 100%;
+        justify-content: center;
+      }
+      .index-link {
+        font-weight: 700;
+        color: var(--text);
+        text-decoration: underline;
+        background: transparent;
+        box-shadow: none;
+        padding: 0;
+      }
       header, footer {
         position: fixed;
         left: 0;
@@ -101,17 +147,40 @@
                 <th>Role</th>
                 <th>Address</th>
                 <th>Contact</th>
+                <th>Status</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               <% users.forEach(function(u) { %>
                 <tr>
-                  <td><%= u.idx %></td>
+                  <td>
+                    <a class="index-link" href="/admin/users/history/<%= encodeURIComponent(u.email) %>"><%= u.idx %></a>
+                  </td>
                   <td><%= u.name %></td>
                   <td><%= u.email %></td>
                   <td><%= u.role %></td>
                   <td><%= u.address %></td>
                   <td><%= u.contact %></td>
+                  <td>
+                    <span class="status <%= u.active ? 'active' : 'inactive' %>">
+                      <%= u.active ? 'Active' : 'Deactivated' %>
+                    </span>
+                  </td>
+                  <td>
+                    <div class="actions">
+                      <a class="btn-link" href="/admin/users/edit/<%= encodeURIComponent(u.email) %>">Edit</a>
+                      <% if (u.active) { %>
+                        <form action="/admin/deactivate-user/<%= encodeURIComponent(u.email) %>" method="post">
+                          <button class="btn danger" type="submit">Deactivate</button>
+                        </form>
+                      <% } else { %>
+                        <form action="/admin/reactivate-user/<%= encodeURIComponent(u.email) %>" method="post">
+                          <button class="btn success" type="submit">Reactivate</button>
+                        </form>
+                      <% } %>
+                    </div>
+                  </td>
                 </tr>
               <% }) %>
             </tbody>

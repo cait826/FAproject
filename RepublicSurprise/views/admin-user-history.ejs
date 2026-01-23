@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Product History | Republic Surprise</title>
+    <title>User History | Republic Surprise</title>
     <style>
       :root {
         --bg: #f8f4ec;
@@ -104,7 +104,7 @@
       table {
         width: 100%;
         border-collapse: collapse;
-        min-width: 860px;
+        min-width: 980px;
       }
       th, td {
         text-align: left;
@@ -148,17 +148,24 @@
         font-size: 0.85rem;
         overflow: auto;
       }
+      .hash {
+        font-family: "Courier New", monospace;
+        font-size: 0.85rem;
+        color: #1f2937;
+      }
     </style>
   </head>
   <body>
     <%- include('partials/header') %>
     <main class="layout">
       <div class="top-row">
-        <a class="back-link" href="/admin/inventory"><span>&larr;</span> Back</a>
+        <a class="back-link" href="/admin/users"><span>&larr;</span> Back</a>
       </div>
       <section class="title-card">
         <h1>Audit History</h1>
-        <p><%= product.productName %> (<%= product.active === false ? 'Deactivated' : 'Active' %>)</p>
+        <p>
+          <%= user.name %> (<%= user.email %>) - <%= user.active === false ? 'Deactivated' : 'Active' %>
+        </p>
       </section>
 
       <section class="table-card">
@@ -173,14 +180,13 @@
           <div class="empty">No audit history available.</div>
         <% } else { %>
           <div class="filters">
-            <input type="text" id="filterOrder" placeholder="Filter by order number" aria-label="Filter by order number">
-            <input type="text" id="filterAction" placeholder="Filter by action (e.g. order creation)" aria-label="Filter by action">
+            <input type="text" id="filterAction" placeholder="Filter by action (e.g. updated)" aria-label="Filter by action">
+            <input type="text" id="filterActor" placeholder="Filter by actor (email)" aria-label="Filter by actor">
           </div>
           <table>
             <thead>
               <tr>
                 <th>Action</th>
-                <th>Order</th>
                 <th>Timestamp</th>
                 <th>Actor</th>
                 <th>Tx Hash</th>
@@ -192,21 +198,16 @@
               <% displayHistory.forEach(function(entry) { %>
                 <tr class="history-row"
                     data-action="<%= (entry.action || '').toLowerCase() %>"
-                    data-order="<%= (entry.orderId || '').toLowerCase() %>">
+                    data-actor="<%= (entry.actor || '').toLowerCase() %>">
                   <td><%= entry.action %></td>
-                  <td>
-                    <% if (entry.orderId) { %>
-                      <a href="/admin/orders/<%= entry.orderId %>"><%= entry.orderId %></a>
-                    <% } else { %>-<% } %>
-                  </td>
                   <td><%= formatTimestamp(entry.timestamp) %></td>
                   <td><%= entry.actor %></td>
-                  <td><%= entry.hash || '-' %></td>
+                  <td class="hash"><%= entry.hash || '-' %></td>
                   <td>
                     <% if (entry.changes && entry.changes.length) { %>
                       <ul class="changes">
                         <% entry.changes.forEach(function(change) { %>
-                          <li><%= change.field %>: <%= change.from %> → <%= change.to %></li>
+                          <li><%= change.field %>: <%= change.from %> -> <%= change.to %></li>
                         <% }) %>
                       </ul>
                     <% } else { %>
@@ -228,22 +229,22 @@
     </main>
     <%- include('partials/footer') %>
     <script>
-      const orderInput = document.getElementById('filterOrder');
       const actionInput = document.getElementById('filterAction');
+      const actorInput = document.getElementById('filterActor');
       const rows = Array.from(document.querySelectorAll('.history-row'));
       const applyFilters = () => {
-        const oVal = (orderInput?.value || '').toLowerCase();
         const aVal = (actionInput?.value || '').toLowerCase();
+        const actorVal = (actorInput?.value || '').toLowerCase();
         rows.forEach((row) => {
           const act = (row.dataset.action || '').toLowerCase();
-          const ord = (row.dataset.order || '').toLowerCase();
-          const matchO = !oVal || ord.includes(oVal);
+          const actor = (row.dataset.actor || '').toLowerCase();
           const matchA = !aVal || act.includes(aVal);
-          row.style.display = matchO && matchA ? '' : 'none';
+          const matchActor = !actorVal || actor.includes(actorVal);
+          row.style.display = matchA && matchActor ? '' : 'none';
         });
       };
-      if (orderInput) orderInput.addEventListener('input', applyFilters);
       if (actionInput) actionInput.addEventListener('input', applyFilters);
+      if (actorInput) actorInput.addEventListener('input', applyFilters);
     </script>
   </body>
 </html>
