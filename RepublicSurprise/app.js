@@ -333,12 +333,13 @@ app.post('/admin/users/edit/:walletAddress', allowRoles(['admin']), (req, res) =
   const { name, walletAddress, role, address, contact } = req.body;
   const errors = [];
   if (!name) errors.push('Name is required.');
-  if (!walletAddress) errors.push('Wallet address is required.');
   if (!address) errors.push('Address is required.');
   if (!contact) errors.push('Contact number is required.');
   const allowedRoles = ['user', 'admin', 'delivery man'];
   if (!role || !allowedRoles.includes(role)) errors.push('Role is required.');
-  if (walletAddress !== targetWallet && users[walletAddress]) errors.push('Wallet address already exists.');
+  if (walletAddress && walletAddress !== targetWallet) {
+    errors.push('Wallet address cannot be changed.');
+  }
 
   if (errors.length) {
     errors.forEach((msg) => req.flash('error', msg));
@@ -348,7 +349,7 @@ app.post('/admin/users/edit/:walletAddress', allowRoles(['admin']), (req, res) =
   const updated = {
     ...user,
     name,
-    walletAddress,
+    walletAddress: targetWallet,
     role,
     address,
     contact
@@ -356,15 +357,7 @@ app.post('/admin/users/edit/:walletAddress', allowRoles(['admin']), (req, res) =
   const entry = buildUserAuditEntry('updated', req.session.user?.walletAddress, user, updated);
   updated.history = [...(user.history || []), entry];
 
-  if (walletAddress !== targetWallet) {
-    delete users[targetWallet];
-    users[walletAddress] = updated;
-    if (req.session.user?.walletAddress === targetWallet) {
-      req.session.user.walletAddress = walletAddress;
-    }
-  } else {
-    users[targetWallet] = updated;
-  }
+  users[targetWallet] = updated;
 
   req.flash('success', 'User profile updated (demo only).');
   res.redirect('/admin/users');
@@ -870,42 +863,50 @@ app.post('/delivery/add-status', allowRoles(['delivery man']), (req, res) => {
 });
 
 // GET route for Update Delivery Status
-app.get('/delivery/update-status', allowRoles(['delivery man']), (req, res) => {
+app.get('/delivery/update-status', allowRoles(['delivery man', 'admin']), (req, res) => {
   res.render('delivery-update-status', { deliveries }); // pass deliveries to the EJS
 });
 
 // POST route for Update Delivery Status
-app.post('/delivery/update-status', allowRoles(['delivery man']), upload.single('proof'), (req, res) => {
+app.post('/delivery/update-status', allowRoles(['delivery man', 'admin']), upload.single('proof'), (req, res) => {
   const { id, status } = req.body;
+  const redirectUrl = req.session.user?.role === 'admin' ? '/delivery/update-status' : '/delivery/dashboard';
   const delivery = deliveries.find((d) => d.id === id || d.deliveryId === id);
   if (!delivery) {
     req.flash('error', 'Delivery not found.');
-    return res.redirect('/delivery/dashboard');
+    return res.redirect(redirectUrl);
+  }
+
+  if (status === 'Completed' && req.session.user?.role !== 'admin') {
+    req.flash('error', 'Only admins can mark a delivery as completed.');
+    return res.redirect(redirectUrl);
   }
 
   if (delivery.status === 'Completed' && !hasApprovedRefund(id)) {
     req.flash('error', 'Completed orders cannot be changed unless a refund was approved.');
-    return res.redirect('/delivery/dashboard');
+    return res.redirect(redirectUrl);
   }
 
   // If delivery man moves to pending confirmation, require proof and hold for admin approval.
   if (status === 'Pending confirmation') {
-    if (!req.file || !['image/jpeg', 'image/png'].includes(req.file.mimetype)) {
+    if (req.session.user?.role !== 'admin' && (!req.file || !['image/jpeg', 'image/png'].includes(req.file.mimetype))) {
       req.flash('error', 'Please upload a .jpg or .png proof image to mark delivery.');
-      return res.redirect('/delivery/dashboard');
+      return res.redirect(redirectUrl);
     }
-    const proofImage = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
-    delivery.proofImage = proofImage;
+    if (req.session.user?.role !== 'admin') {
+      const proofImage = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+      delivery.proofImage = proofImage;
+    }
     delivery.status = 'Pending confirmation';
     const linkedOrder = orders.find((o) => o.id === delivery.orderNumber);
     if (linkedOrder) linkedOrder.status = 'Pending Delivery Confirmation';
     req.flash('success', 'Proof submitted. Awaiting admin confirmation.');
-    return res.redirect('/delivery/dashboard');
+    return res.redirect(redirectUrl);
   }
 
   delivery.status = status;
   req.flash('success', 'Delivery status updated successfully.');
-  res.redirect('/delivery/dashboard');
+  res.redirect(redirectUrl);
 });
 
 

@@ -111,11 +111,24 @@
                       <option value="Pending" <%= delivery.status === 'Pending' ? 'selected' : '' %>>Pending</option>
                       <option value="Out for Delivery" <%= delivery.status === 'Out for Delivery' ? 'selected' : '' %>>Out for Delivery</option>
                       <option value="Pending confirmation" <%= delivery.status === 'Pending confirmation' ? 'selected' : '' %>>Pending confirmation (upload proof)</option>
-                      <option value="Completed" disabled>Completed (admin only)</option>
+                      <% if (user && user.role === 'admin') { %>
+                        <option value="Completed" <%= delivery.status === 'Completed' ? 'selected' : '' %>>Completed (admin only)</option>
+                      <% } else { %>
+                        <option value="Completed" disabled>Completed (admin only)</option>
+                      <% } %>
                     </select>
                     <div class="proof-wrap" style="display:<%= delivery.status === 'Pending confirmation' ? 'block' : 'none' %>; margin-top:6px; font-size:0.9rem; color:#5f6c7b;">
-                      Proof (.jpg/.png):
-                      <input type="file" name="proof" accept=".jpg,.jpeg,.png" />
+                      <% if (user && user.role === 'admin') { %>
+                        <div>Proof uploaded by delivery partner:</div>
+                        <% if (delivery.proofImage) { %>
+                          <img src="<%= delivery.proofImage %>" alt="Delivery proof for <%= delivery.orderNumber || delivery.id %>" style="margin-top:8px; max-width:240px; border-radius:10px; border:1px solid rgba(0,0,0,0.1);" />
+                        <% } else { %>
+                          <div>No proof uploaded yet.</div>
+                        <% } %>
+                      <% } else { %>
+                        Proof (.jpg/.png):
+                        <input type="file" name="proof" accept=".jpg,.jpeg,.png" />
+                      <% } %>
                     </div>
                     <button type="submit">Update</button>
                   </form>
