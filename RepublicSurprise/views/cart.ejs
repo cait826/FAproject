@@ -149,7 +149,7 @@
               <div class="item">
                 <div>
                   <h3><%= item.name %></h3>
-                  <p class="meta">$<%= Number(item.price || 0).toFixed(2) %> each</p>
+                  <p class="meta">S$<%= Number(item.price || 0).toFixed(2) %> each</p>
                 </div>
                 <div>
                   <form class="qty-form" method="post" action="/cart/update">
@@ -170,18 +170,21 @@
           <h1>Order summary</h1>
           <div class="summary-line">
             <span>Subtotal</span>
-            <span>$<%= Number(totals.subtotal || 0).toFixed(2) %></span>
+            <span>S$<%= Number(totals.subtotal || 0).toFixed(2) %></span>
           </div>
           <div class="summary-line">
             <span>Shipping</span>
-            <span>$<%= Number(totals.shipping || 0).toFixed(2) %></span>
+            <span>S$<%= Number(totals.shipping || 0).toFixed(2) %></span>
           </div>
           <div class="summary-line summary-total">
             <span>Total</span>
-            <span>$<%= Number(totals.total || 0).toFixed(2) %></span>
+            <span>S$<%= Number(totals.total || 0).toFixed(2) %></span>
           </div>
           <p class="note">Edit quantities or remove items before checkout.</p>
           <button class="btn checkout" onclick="window.location.href='/payment'">Proceed to Payment</button>
+          <form method="post" action="/cart/clear" style="margin-top:10px;">
+            <button class="btn alt" type="submit" style="width:100%;">Clear Cart</button>
+          </form>
         </aside>
       </main>
     </div>

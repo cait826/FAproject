@@ -832,6 +832,11 @@ app.post('/cart/remove/:id', allowRoles(['user']), (req, res) => {
   res.redirect('/cart');
 });
 
+app.post('/cart/clear', allowRoles(['user']), (req, res) => {
+  req.session.cart = [];
+  res.redirect('/cart');
+});
+
 const protectedRoutes = [
   { path: '/mainpage', roles: ['user'], title: 'Main Page' },
   { path: '/order-tracking', roles: ['user'], title: 'Order Tracking' }

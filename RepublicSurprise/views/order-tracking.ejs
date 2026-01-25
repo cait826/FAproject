@@ -61,7 +61,11 @@
 (() => {
   const TRACKING_KEY = 'ORDER_TRACKING_DATA';
   const $ = id => document.getElementById(id);
-  function fmt(n){ return Number(n).toFixed(6) + ' ETH'; }
+  function fmtSgd(n, rate){
+    const value = Number(n) || 0;
+    if (!rate) return 'S$' + value.toFixed(2);
+    return 'S$' + (value * rate).toFixed(2);
+  }
 
   document.addEventListener('DOMContentLoaded', () => {
     const raw = sessionStorage.getItem(TRACKING_KEY);
@@ -83,10 +87,14 @@
     });
 
     const items = $('items');
+    const totalEth = (data.items || []).reduce((sum, it) => {
+      return sum + (Number(it.price || 0) * Number(it.qty || 0));
+    }, 0);
+    const rate = Number(data.sgdRate || 0) || ((Number(data.sgdTotal || 0) && totalEth) ? Number(data.sgdTotal) / totalEth : 0);
     items.innerHTML = '';
     (data.items || []).forEach(it => {
       const tr = document.createElement('tr');
-      tr.innerHTML = '<td>' + (it.name || '') + '</td><td style="text-align:center">' + (it.qty || 0) + '</td><td style="text-align:right">' + fmt(it.price || 0) + '</td>';
+      tr.innerHTML = '<td>' + (it.name || '') + '</td><td style="text-align:center">' + (it.qty || 0) + '</td><td style="text-align:right">' + fmtSgd(it.price || 0, rate) + '</td>';
       items.appendChild(tr);
     });
 
