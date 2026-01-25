@@ -233,6 +233,7 @@
                 <div id="wallet-actions">
                   <button id="btnConnect" class="btn btnPrimary">🔗 Connect Wallet (MetaMask)</button>
                   <button id="btnConfirm" class="btn btnConfirm" disabled style="margin-left:8px;">✅ Confirm Payment</button>
+                  <!-- View Invoice link removed from wallet panel — inline invoice will display after payment -->
                 </div>
 
                 <div class="small" id="status"></div>
@@ -275,9 +276,11 @@
             </div>
 
             <div style="margin-top:12px;">
-              <button id="printBtn" class="btn btnPrimary">🖨 Print Invoice</button>
+              <button id="printBtn" class="btn btnPrimary">🖨 Print Payment</button>
               <a href="/order-tracking" class="btn btnPrimary" style="margin-left:8px;text-decoration:none;">Track Order</a>
+              <a href="/invoice" class="btn btnPrimary" style="margin-left:8px;text-decoration:none;">View Invoice</a>
               <button id="backBtn" class="btn btnGrey" style="margin-left:8px;">Back</button>
+              
             </div>
           </div>
         </div>
@@ -297,9 +300,9 @@
     const $ = id => document.getElementById(id);
 
     function fmtSgd(n){
-      const rate = window.ETH_SGD_RATE || 0;
-      if(!rate) return 'S$0.00';
-      return 'S$' + (Number(n) * rate).toFixed(2);
+      // Treat the input number as an SGD amount (cart prices are stored in SGD)
+      const num = Number(n) || 0;
+      return 'S$' + num.toFixed(2);
     }
 
     async function fetchRate(){
@@ -317,19 +320,75 @@
       }
     }
 
-    function loadCheckout(){
+    async function loadCheckout(){
       const raw = sessionStorage.getItem(CHECKOUT_KEY) || sessionStorage.getItem(ALT_KEY);
       if(raw){ try{ return JSON.parse(raw); }catch(e){} }
-      return { items: [{ name: 'Demo Surprise Box', qty: 1, price: 0.01 }], total: 0.01 };
+
+      // Try to fetch cart HTML from server and parse items (no server changes required)
+      try{
+        const res = await fetch('/cart', { cache: 'no-store' });
+        if(res && res.ok){
+          const text = await res.text();
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(text, 'text/html');
+          const items = [];
+          doc.querySelectorAll('.item').forEach(node => {
+            const name = (node.querySelector('h3')?.textContent || '').trim();
+            const priceTextRaw = (node.querySelector('.meta')?.textContent || '').replace('S$', '').trim();
+            const priceNumText = priceTextRaw.replace(/[^0-9\.]/g, '');
+            const price = Number(priceNumText) || 0;
+            const qtyInput = node.querySelector('input[name=qty]');
+            const qty = Number(qtyInput?.value) || 1;
+            const idInput = node.querySelector('input[name=id]');
+            const id = idInput?.value || '';
+            items.push({ id, name, price, qty, description: '' });
+          });
+
+          // parse subtotal / shipping / total from summary lines
+          let subtotal = 0, shipping = 0, total = 0;
+          doc.querySelectorAll('.summary-line').forEach(line => {
+            const key = (line.querySelector('span')?.textContent || '').trim().toLowerCase();
+            const valText = (line.querySelectorAll('span')[1]?.textContent || '').replace('S$', '').trim();
+            const num = Number(valText.replace(/[^0-9\.]/g, '')) || 0;
+            if(key.includes('subtotal')) subtotal = num;
+            else if(key.includes('shipping')) shipping = num;
+          });
+          const totalEl = doc.querySelector('.summary-total span:last-child');
+          if(totalEl){ total = Number((totalEl.textContent || '').replace(/[^0-9\.]/g, '')) || (subtotal + shipping); }
+          else { total = items.reduce((s,i)=>s + (Number(i.price)||0) * (Number(i.qty)||0), 0) + shipping; }
+
+          // Fallback: if subtotal/shipping weren't parsed but items exist, compute them like server does
+          if((!subtotal || subtotal === 0) && items.length){
+            subtotal = items.reduce((s,i)=>s + (Number(i.price)||0) * (Number(i.qty)||0), 0);
+            shipping = subtotal > 0 ? 6.9 : 0;
+            total = subtotal + shipping;
+          }
+
+          const checkout = { items, subtotal, shipping, total };
+          try{ sessionStorage.setItem(CHECKOUT_KEY, JSON.stringify(checkout)); }catch(e){}
+          return checkout;
+        }
+      }catch(e){ /* ignore and fall back */ }
+
+      return { items: [{ name: 'Demo Surprise Box', qty: 1, price: 0.01, description: '' }], total: 0.01 };
     }
+
+    const SHIPPING_DESC = 'Standard shipping (3-5 days)';
 
     function renderOrder(chk){
       const list = $('items-list'); list.innerHTML = '';
-      (chk.items || []).forEach(i => {
+      (chk.items || []).forEach((i, idx) => {
         const div = document.createElement('div');
         div.className = 'order-row';
+        const shippingHtml = (idx === 0 && chk.shipping && Number(chk.shipping) > 0)
+          ? `<div class="muted small">Shipping - ${fmtSgd(chk.shipping)}</div>`
+          : '';
         div.innerHTML = `
-          <div style="flex:1">${i.name}</div>
+          <div style="flex:1">
+            <div>${i.name}</div>
+            ${i.description ? `<div class="muted small">${i.description}</div>` : ''}
+            ${shippingHtml}
+          </div>
           <div style="width:60px;text-align:center">${i.qty}</div>
           <div style="width:120px;text-align:right">${fmtSgd(i.price)}</div>
         `;
@@ -346,13 +405,33 @@
       return accounts && accounts[0];
     }
 
-    const checkout = loadCheckout();
+    const checkoutPromise = loadCheckout();
 
     // fetch rate first, then render order so SGD values are shown when available
     fetchRate().then(rate => {
       if(rate) $('status').textContent = 'Exchange rate loaded';
-      renderOrder(checkout);
-    }).catch(()=> renderOrder(checkout));
+      checkoutPromise.then(async (chk) => {
+        // fetch product descriptions (if possible) from product pages
+        const descPromises = (chk.items || []).map(async (it) => {
+          if(!it.description && it.id) {
+            try{
+              const r = await fetch('/product?id=' + encodeURIComponent(it.id), { cache: 'no-store' });
+              if(r && r.ok){
+                const t = await r.text();
+                const p = new DOMParser().parseFromString(t, 'text/html');
+                const desc = p.querySelector('.desc')?.textContent?.trim() || '';
+                it.description = desc;
+              }
+            }catch(e){}
+          }
+        });
+        await Promise.all(descPromises);
+        renderOrder(chk);
+        window.__checkout = chk;
+      }).catch((e)=>{ renderOrder({ items: [], total: 0 }); });
+    }).catch(()=> {
+      checkoutPromise.then((chk)=>{ renderOrder(chk); window.__checkout = chk; }).catch(()=>renderOrder({ items: [], total: 0 }));
+    });
 
     let connected = null;
 
@@ -370,23 +449,28 @@
       }
     });
 
-    $('btnConfirm').addEventListener('click', ()=>{
+    // The View Invoice link was removed from the wallet panel; inline invoice will be shown after payment.
+
+    $('btnConfirm').addEventListener('click', async ()=>{
       $('status').textContent = 'Processing payment...';
       $('btnConfirm').disabled = true; $('btnConnect').disabled = true;
+      const chk = window.__checkout || await checkoutPromise.catch(()=>({ items: [], total: 0 }));
       setTimeout(()=>{
         $('status').textContent = 'Payment successful (simulated)';
-        showInvoice(connected, checkout);
+        // show the inline invoice (no auto-redirect)
+        showInvoice(connected, chk);
       }, 900);
     });
+    
 
     function showInvoice(account, chk){
       const inv = {
         invoiceId: 'INV-'+Date.now(),
         dateTime: new Date().toLocaleString(),
         wallet: account || 'N/A',
-        items: chk.items || [],
+        items: chk.items ? [...chk.items] : [],
         total: chk.total || 0,
-        sgdTotal: (chk.total || 0) * (window.ETH_SGD_RATE || 0)
+        sgdTotal: (chk.total || 0)
       };
 
       $('inv-id').textContent = inv.invoiceId;
@@ -394,11 +478,16 @@
       $('inv-wallet').textContent = inv.wallet;
 
       const tbody = $('inv-items'); tbody.innerHTML = '';
+      // include shipping as an invoice line
+      if(chk.shipping && Number(chk.shipping) > 0){
+        inv.items.push({ id: 'shipping', name: 'Shipping', description: SHIPPING_DESC, price: chk.shipping, qty: 1 });
+      }
+
       inv.items.forEach(it => {
         const tr = document.createElement('tr');
         const subtotal = (Number(it.price)||0) * (Number(it.qty)||0);
         tr.innerHTML = `
-          <td>${it.name}</td>
+          <td>${it.name}${it.description ? `<div class="muted small">${it.description}</div>` : ''}</td>
           <td class="right">${it.qty}</td>
           <td class="right">${fmtSgd(it.price)}</td>
           <td class="right">${fmtSgd(subtotal)}</td>

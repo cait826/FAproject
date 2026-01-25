@@ -46,16 +46,16 @@
 
       <div id="card" style="display:none" class="card">
         <h2>Invoice</h2>
-        <div class="small muted" style="margin-bottom:12px">Demo invoice (frontend-only)</div>
+        <div class="small muted" style="margin-bottom:12px">invoice</div>
         <div style="display:flex;gap:18px;flex-wrap:wrap">
           <div style="flex:1;min-width:220px"><div><strong>Invoice ID:</strong> <span id="id"></span></div><div><strong>Date:</strong> <span id="date"></span></div></div>
           <div style="flex:1;min-width:220px"><div><strong>Buyer:</strong> <span id="buyer"></span></div><div><strong>Merchant:</strong> <span id="merchant"></span></div></div>
         </div>
         <div style="margin-top:12px"><div class="small">Transaction: <a id="tx" href="#" target="_blank" rel="noreferrer"></a></div></div>
 
-        <table aria-label="Invoice items"><thead><tr><th>Item</th><th style="text-align:center">Qty</th><th style="text-align:right">Unit</th><th style="text-align:right">Subtotal</th></tr></thead><tbody id="items"></tbody></table>
+          <table aria-label="Invoice items" style="margin-top:12px"><thead><tr><th>Item</th><th style="text-align:center">Qty</th><th style="text-align:right">Unit</th><th style="text-align:right">Subtotal</th></tr></thead><tbody id="items"></tbody></table>
 
-        <div class="total"><div class="small">Total paid</div><div id="total">0.000000 ETH</div></div>
+          <div class="total"><div class="small">Total (SGD)</div><div id="total"><strong>S$0.00</strong></div></div>
 
         <div style="margin-top:14px"><button id="print" class="btn">Print Invoice</button><a href="/order-tracking" class="btn" style="margin-left:8px;text-decoration:none">Track Order</a><a href="/cart" class="btn" style="margin-left:8px;text-decoration:none">Back to Shop</a></div>
       </div>
@@ -66,8 +66,8 @@
       const KEYS = ['INVOICE_DATA','FA_INVOICE_DATA'];
       const TRACKING_KEY = 'ORDER_TRACKING_DATA';
       const $ = id => document.getElementById(id);
-      function esc(s){ if(!s) return ''; return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]); }
-      function fmt(n){ return Number(n).toFixed(6) + ' ETH'; }
+      function esc(s){ if(!s) return ''; return String(s).replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]); }
+      function fmtSgd(n){ return 'S$' + (Number(n) || 0).toFixed(2); }
 
       document.addEventListener('DOMContentLoaded', ()=>{
         let raw = null;
@@ -76,23 +76,32 @@
         let inv = null;
         try{ inv = JSON.parse(raw); }catch(e){ $('no-invoice').style.display = 'block'; return; }
 
+        // Map fields from payment.showInvoice()
         $('id').textContent = inv.invoiceId || '';
         $('date').textContent = inv.dateTime || '';
-        $('buyer').textContent = inv.buyerAddress || '';
-        $('merchant').textContent = inv.merchantAddress || '';
+        $('buyer').textContent = inv.wallet || inv.buyerAddress || '';
+        $('merchant').textContent = inv.merchantAddress || inv.merchant || 'Republic Surprise';
 
         const txEl = $('tx');
         if(inv.txHash){ txEl.textContent = inv.txHash; txEl.href = 'https://etherscan.io/tx/' + inv.txHash; } else { txEl.textContent = ''; txEl.removeAttribute('href'); }
 
         const body = $('items'); body.innerHTML = '';
+        // Populate items table and compute totals
+        let subtotal = 0;
+        let shippingVal = 0;
         (inv.items || []).forEach(it => {
           const tr = document.createElement('tr');
-          const subtotal = (Number(it.price)||0) * (Number(it.qty)||0);
-          tr.innerHTML = '<td>'+esc(it.name)+'</td><td style="text-align:center">'+(it.qty)+'</td><td style="text-align:right">'+fmt(it.price)+'</td><td style="text-align:right">'+fmt(subtotal)+'</td>';
+          const unit = Number(it.price) || 0;
+          const qty = Number(it.qty) || 0;
+          const lineSubtotal = unit * qty;
+          tr.innerHTML = '<td>'+esc(it.name)+(it.description?('<div class="muted small">'+esc(it.description)+'</div>'):'')+'</td><td style="text-align:center">'+(qty)+'</td><td style="text-align:right">'+fmtSgd(unit)+'</td><td style="text-align:right">'+fmtSgd(lineSubtotal)+'</td>';
           body.appendChild(tr);
+          if(it.id === 'shipping' || (it.name && String(it.name).toLowerCase().includes('shipping'))){ shippingVal = unit || shippingVal; }
+          else { subtotal += lineSubtotal; }
         });
 
-        $('total').textContent = fmt(inv.totalPaidEth || inv.total || 0);
+        const totalVal = inv.sgdTotal || inv.total || inv.totalPaidEth || (subtotal + shippingVal);
+        $('total').textContent = fmtSgd(totalVal);
         $('card').style.display = 'block';
 
         if (!sessionStorage.getItem(TRACKING_KEY)) {
