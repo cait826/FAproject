@@ -296,6 +296,8 @@
     const INVOICE_KEY = 'INVOICE_DATA';
     const TRACKING_KEY = 'ORDER_TRACKING_DATA';
     const COINGECKO_URL = 'https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=sgd';
+    const SERVER_CUSTOMER_NAME = <%- JSON.stringify((user && user.name) ? user.name : '') %>;
+    const SERVER_CUSTOMER_ADDRESS = <%- JSON.stringify((user && user.address) ? user.address : '') %>;
 
     const $ = id => document.getElementById(id);
 
@@ -511,8 +513,26 @@
         ],
         sgdTotal: inv.sgdTotal
       };
+      // persist tracking and notify server to create a delivery record
       try{ sessionStorage.setItem(TRACKING_KEY, JSON.stringify(tracking)); }catch(e){}
 
+      // create delivery record for delivery staff — do not redirect the paying user
+      const payload = {
+        orderId: tracking.orderId,
+        customerName: SERVER_CUSTOMER_NAME || inv.wallet,
+        address: SERVER_CUSTOMER_ADDRESS || ''
+      };
+      fetch('/create-delivery', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).then(async (res) => {
+        try{ const body = await res.json(); console.log('delivery created', body); }catch(e){ console.warn(e); }
+      }).catch((err) => {
+        console.warn('Failed to create delivery record', err);
+      });
+
+      // show invoice for a brief moment until redirect triggers
       $('invoice').style.display = 'block';
       $('payment-card').style.display = 'none';
       $('invoice-preview').textContent = 'Invoice ready';

@@ -521,8 +521,22 @@ app.post('/admin/customer-service/approve/:id', allowRoles(['admin']), (req, res
 const deliveries = [
   { id: 'DEL-001', deliveryId: 'DEL-001', orderNumber: 'ORD-1001', customer: '0xA1b2c3D4e5F678901234567890abcdef12345678', status: 'Out for Delivery', proofImage: null },
   { id: 'DEL-002', deliveryId: 'DEL-002', orderNumber: 'ORD-1002', customer: '0xB2c3D4e5F678901234567890abcdef1234567890', status: 'Pending', proofImage: null },
-  { id: 'DEL-003', deliveryId: 'DEL-003', orderNumber: 'ORD-1003', customer: '0xC3d4E5f678901234567890abcdef1234567890Ab', status: 'Completed', proofImage: null }
+  { id: 'DEL-003', deliveryId: 'DEL-003', orderNumber: 'ORD-1003', customer: '0xC3d4E5f678901234567890abcdef1234567890Ab', status: 'Completed', proofImage: null },
+  // Sample entry for local testing: Order ID 1023 assigned to demo delivery man
+  { id: 'DEL-1023', deliveryId: 'DEL-1023', orderNumber: '1023', customerName: 'John Tan', address: '12 Orchard Road', status: 'out_for_delivery', assignedTo: '0x9a966d7e74B87279448E82b4652c4b7012ba2feE', proofImage: null }
 ];
+
+// Add a demo delivery-man user so you can log in locally with wallet '0x9a966d7e74B87279448E82b4652c4b7012ba2feE'
+users[normalizeWalletAddress('0x9a966d7e74B87279448E82b4652c4b7012ba2feE')] = {
+  name: 'Demo Driver 9A',
+  walletAddress: '0x9a966d7e74B87279448E82b4652c4b7012ba2feE',
+  role: 'delivery man',
+  address: 'Depot',
+  contact: '0000',
+  active: true,
+  createdAt: new Date().toISOString(),
+  history: []
+};
 
 const orders = [
   { id: 'ORD-1001', product: 'Mystery Box A', customer: '0xA1b2c3D4e5F678901234567890abcdef12345678', price: 49.9, qty: 2, status: 'Pending Delivery Confirmation' },
@@ -537,8 +551,100 @@ const refundTickets = [
 
 
 
+// (delivery dashboard implemented later with deliveryName/stats/filters)
+
+// Create a delivery record (called from payment page after successful payment)
+// Create a delivery record (called from payment page after successful payment)
+app.post('/create-delivery', (req, res) => {
+  const { orderId, customerName: bodyName, address: bodyAddress, customerWallet } = req.body || {};
+  if (!orderId) return res.status(400).json({ error: 'orderId is required' });
+  const newId = 'DEL-' + Date.now().toString().slice(-6);
+  // Prefer explicit name/address from request; otherwise try to resolve from wallet
+  let customerName = bodyName || 'Guest';
+  let address = bodyAddress || '';
+  if ((!bodyName || !bodyName.length) && customerWallet) {
+    const user = getUserByWallet(customerWallet);
+    if (user) {
+      customerName = user.name || customerWallet;
+      address = user.address || '';
+    } else {
+      customerName = customerWallet;
+    }
+  }
+  const entry = {
+    id: newId,
+    deliveryId: newId,
+    orderNumber: orderId,
+    customerName,
+    address,
+    status: 'pending',
+    proofImage: null,
+    contact: ''
+  };
+  deliveries.push(entry);
+  return res.json({ success: true, delivery: entry });
+});
+
+// Alias to the delivery dashboard
+app.get('/delivery-home', allowRoles(['delivery man']), (req, res) => {
+  return res.redirect('/delivery/dashboard');
+});
+
+// Delivery dashboard: show deliveries assigned to logged-in delivery man with stats and filters
 app.get('/delivery/dashboard', allowRoles(['delivery man']), (req, res) => {
-  res.render('delivery-home', { deliveries });
+  const wallet = req.session.user?.walletAddress;
+  const user = getUserByWallet(wallet);
+  const deliveryName = (user && user.name) ? user.name : (wallet || 'Delivery User');
+
+  // deliveries assigned to current delivery man
+  const assignedList = deliveries.filter((d) => d.assignedTo === wallet);
+  // pending deliveries (unassigned) visible to all delivery men so they can pick
+  const pendingList = deliveries.filter((d) => d.status === 'pending');
+
+  // compute stats for this delivery man (assigned + pending visible)
+  const stats = {
+    assigned: assignedList.filter((d) => d.status === 'assigned' || d.status === 'out_for_delivery').length,
+    pending: pendingList.length,
+    delivered_pending: assignedList.filter((d) => d.status === 'delivered_pending').length
+  };
+
+  // start with both assigned and pending deliveries
+  let list = [...assignedList, ...pendingList];
+  const q = (req.query.q || '').toLowerCase().trim();
+  const statusFilter = req.query.status || '';
+  if (statusFilter) list = list.filter((d) => String(d.status).toLowerCase() === String(statusFilter).toLowerCase());
+  if (q) {
+    list = list.filter((d) => {
+      const customer = String(d.customerName || d.customer || '').toLowerCase();
+      const addr = String(d.address || '').toLowerCase();
+      const order = String(d.orderNumber || '').toLowerCase();
+      return customer.includes(q) || addr.includes(q) || order.includes(q);
+    });
+  }
+
+  // provide simplified fields to the view
+  const viewDeliveries = list.map((d) => ({ id: d.id, orderNumber: d.orderNumber, address: d.address || '', status: d.status || '', customerName: d.customerName || '' }));
+
+  res.render('delivery-home', { deliveries: viewDeliveries, deliveryName, stats });
+});
+
+// Assign a pending delivery to the current delivery user
+app.post('/deliveries/:id/assign', allowRoles(['delivery man']), (req, res) => {
+  const id = req.params.id;
+  const target = deliveries.find((d) => d.id === id || d.deliveryId === id);
+  if (!target) {
+    req.flash('error', 'Delivery not found.');
+    return res.redirect('/delivery-home');
+  }
+  if (target.status !== 'Pending') {
+    req.flash('error', 'Delivery is not pending and cannot be assigned.');
+    return res.redirect('/delivery-home');
+  }
+  target.status = 'Assigned';
+  target.assignedTo = req.session.user?.walletAddress || 'unknown';
+  target.assignedAt = new Date().toISOString();
+  req.flash('success', `Delivery ${target.id} assigned to you.`);
+  return res.redirect('/delivery-home');
 });
 
 app.get('/delivery/order/:id', allowRoles(['delivery man', 'admin']), (req, res) => {
@@ -548,6 +654,62 @@ app.get('/delivery/order/:id', allowRoles(['delivery man', 'admin']), (req, res)
     return res.redirect('/delivery/dashboard');
   }
   res.render('delivery-order-detail', { delivery });
+});
+
+// Delivery detail view with permission check: delivery man can only view their assigned deliveries
+app.get('/deliveries/:id', allowRoles(['delivery man', 'admin']), (req, res) => {
+  const id = req.params.id;
+  const delivery = deliveries.find((d) => d.id === id || d.deliveryId === id) || null;
+  if (!delivery) {
+    req.flash('error', 'Delivery not found.');
+    return res.redirect('/delivery/dashboard');
+  }
+  if (req.session.user.role === 'delivery man') {
+    const wallet = req.session.user?.walletAddress;
+    if (delivery.assignedTo !== wallet) {
+      req.flash('error', 'Access denied. This delivery is not assigned to you.');
+      return res.redirect('/delivery/dashboard');
+    }
+  }
+  res.render('delivery-order-detail', { delivery });
+});
+
+// Submit proof of delivery (photo + remarks + optional signature)
+app.post('/deliveries/:id/submit-proof', allowRoles(['delivery man']), upload.single('proofImage'), (req, res) => {
+  const id = req.params.id;
+  const delivery = deliveries.find((d) => d.id === id || d.deliveryId === id) || null;
+  if (!delivery) {
+    req.flash('error', 'Delivery not found.');
+    return res.redirect('/delivery/dashboard');
+  }
+  const wallet = req.session.user?.walletAddress;
+  if (delivery.assignedTo !== wallet) {
+    req.flash('error', 'Access denied. This delivery is not assigned to you.');
+    return res.redirect('/delivery/dashboard');
+  }
+
+  // Accept file and store as base64 for demo
+  if (req.file && req.file.buffer) {
+    const b64 = req.file.buffer.toString('base64');
+    delivery.proofImage = { data: b64, mimetype: req.file.mimetype, filename: req.file.originalname };
+  }
+  delivery.remarks = req.body.remarks || '';
+  delivery.signature = req.body.signature || '';
+  delivery.status = 'delivered_pending';
+  delivery.deliveredAt = new Date().toISOString();
+
+  req.flash('success', 'Proof submitted. Awaiting admin confirmation.');
+  return res.redirect('/delivery/dashboard');
+});
+
+// Delivery history for logged-in delivery man
+app.get('/delivery-history', allowRoles(['delivery man']), (req, res) => {
+  const wallet = req.session.user?.walletAddress;
+  const user = getUserByWallet(wallet);
+  const deliveryName = (user && user.name) ? user.name : (wallet || 'Delivery User');
+  const history = deliveries.filter((d) => d.assignedTo === wallet && (d.status === 'delivered_pending' || d.status === 'completed'))
+    .map((d) => ({ id: d.id, orderNumber: d.orderNumber, customerName: d.customerName || d.customer || '', status: d.status, proofImage: d.proofImage || null, remarks: d.remarks || '' }));
+  res.render('delivery-history', { history, deliveryName });
 });
 
 // Admin-friendly alias to view delivery details without hitting the delivery dashboard redirect.

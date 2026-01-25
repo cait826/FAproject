@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Delivery History</title>
+    <style>
+      body { font-family: "Segoe UI", Tahoma, sans-serif; padding:72px 16px; }
+      .card { max-width:900px; margin:0 auto; background:#fff; padding:20px; border-radius:12px; box-shadow:0 12px 30px rgba(0,0,0,0.06); }
+      h1 { margin-top:0 }
+      .entry { border-top:1px solid #eee; padding:12px 0; }
+      .meta { color:#666; font-size:13px }
+      img.proof { max-width:320px; border-radius:8px; border:1px solid #ddd; display:block; margin-top:8px }
+    </style>
+  </head>
+  <body>
+    <%- include('partials/header') %>
+    <div class="card">
+      <h1>Delivery History</h1>
+      <p>History for <strong><%= deliveryName %></strong>.</p>
+
+      <% if (history && history.length) { %>
+        <% history.forEach(function(d){ %>
+          <div class="entry">
+            <div><strong>Order:</strong> <a href="/deliveries/<%= d.id %>"><%= d.orderNumber %></a></div>
+            <div class="meta">Status: <%= d.status %></div>
+            <div class="meta">Customer: <%= d.customerName %></div>
+            <% if (d.remarks) { %>
+              <div style="margin-top:8px;"><strong>Remarks:</strong> <%= d.remarks %></div>
+            <% } %>
+            <% if (d.proofImage && d.proofImage.data) { %>
+              <img class="proof" src="data:<%= d.proofImage.mimetype %>;base64,<%= d.proofImage.data %>" />
+            <% } %>
+          </div>
+        <% }) %>
+      <% } else { %>
+        <p>No history available.</p>
+      <% } %>
+
+    </div>
+    <%- include('partials/footer') %>
+  </body>
+</html>
