@@ -153,9 +153,62 @@
       const connectBtn = document.getElementById('connectWallet');
       const walletInput = document.getElementById('walletAddress');
 
+      let walletIsAvailable = false;
+      walletInput.value = '';
+
       const setStatus = (msg, isError) => {
         statusEl.textContent = msg || '';
         statusEl.className = isError ? 'status error' : 'status';
+      };
+
+      const validateWalletAvailability = async (account, autoPrompt = true) => {
+        if (!account) {
+          walletIsAvailable = false;
+          setStatus('Wallet address is required.', true);
+          return false;
+        }
+        try {
+          const response = await fetch(`/register/check-wallet?walletAddress=${encodeURIComponent(account)}`);
+          if (!response.ok) throw new Error('Unable to verify wallet address.');
+          const payload = await response.json();
+          if (payload.inUse) {
+            walletIsAvailable = false;
+            setStatus('This MetaMask address already has an account. Switch to a different wallet before proceeding.', true);
+            if (autoPrompt) await promptAccountSelection();
+            return false;
+          }
+          walletIsAvailable = true;
+          setStatus('Wallet ready for registration.', false);
+          return true;
+        } catch (err) {
+          console.error(err);
+          walletIsAvailable = false;
+          setStatus('Unable to verify wallet address. Please try again.', true);
+          return false;
+        }
+      };
+
+      const promptAccountSelection = async () => {
+        if (!window.ethereum || !window.ethereum.request) return;
+        try {
+          await window.ethereum.request({
+            method: 'wallet_requestPermissions',
+            params: [{ eth_accounts: {} }]
+          });
+        } catch (err) {
+          console.debug('Permission request skipped', err);
+        }
+      };
+
+      const handleAccountsChanged = async (accounts) => {
+        const account = (accounts && accounts[0]) || '';
+        walletInput.value = account;
+        walletIsAvailable = false;
+        if (!account) {
+          setStatus('No wallet connected. Please select an account.', true);
+          return;
+        }
+        await validateWalletAvailability(account);
       };
 
       const connectWallet = async () => {
@@ -165,28 +218,41 @@
         }
         try {
           setStatus('Requesting wallet...', false);
+          await promptAccountSelection();
           const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-          const account = (accounts && accounts[0]) || '';
-          if (!account) {
-            setStatus('No wallet selected.', true);
-            return;
-          }
-          walletInput.value = account;
-          setStatus('Wallet connected.', false);
+          await handleAccountsChanged(accounts);
         } catch (err) {
           setStatus(err && err.message ? err.message : 'Unable to connect wallet.', true);
         }
       };
 
-      connectBtn.addEventListener('click', connectWallet);
-      form.addEventListener('submit', (e) => {
-        if (!walletInput.value) {
-          e.preventDefault();
-          setStatus('Wallet address is required.', true);
-        } else {
-          setStatus('', false);
+      const handleSubmit = async (event) => {
+        if (form.dataset.skipValidation === 'true') {
+          delete form.dataset.skipValidation;
+          return;
         }
-      });
+        event.preventDefault();
+        if (!walletInput.value) {
+          setStatus('Wallet address is required.', true);
+          return;
+        }
+        if (!walletIsAvailable) {
+          const valid = await validateWalletAvailability(walletInput.value);
+          if (!valid) {
+            setStatus('Please connect a MetaMask address that has not been used before.', true);
+            return;
+          }
+        }
+        setStatus('', false);
+        form.dataset.skipValidation = 'true';
+        form.submit();
+      };
+
+      connectBtn.addEventListener('click', connectWallet);
+      if (window.ethereum && window.ethereum.on) {
+        window.ethereum.on('accountsChanged', handleAccountsChanged);
+      }
+      form.addEventListener('submit', handleSubmit);
     </script>
   </body>
 </html>

@@ -13,6 +13,20 @@ const products = [];
 let lastProductId = null;
 const upload = multer({ storage: multer.memoryStorage(), limits: { files: 3 } });
 
+const normalizeWalletAddress = (address) => (address || '').trim().toLowerCase();
+const getUserByWallet = (address) => {
+  const key = normalizeWalletAddress(address);
+  if (!key) return null;
+  return users[key] || null;
+};
+const setUserByWallet = (address, data) => {
+  const key = normalizeWalletAddress(address);
+  if (!key) return null;
+  users[key] = data;
+  return key;
+};
+const walletAddressExists = (address) => !!getUserByWallet(address);
+
 const getActiveProducts = () => products.filter((item) => item.active !== false);
 
 const productFields = [
@@ -167,21 +181,64 @@ app.get('/user/home', allowRoles(['user']), (req, res) => {
   res.render('user-home');
 });
 
+app.get('/user/profile', allowRoles(['user']), (req, res) => {
+  const walletAddress = req.session.user?.walletAddress || '';
+  const user = getUserByWallet(walletAddress);
+  if (!user) {
+    req.flash('error', 'User profile not found. Please log in again.');
+    return res.redirect('/login');
+  }
+  res.render('user-profile', { user });
+});
+
+app.post('/user/profile', allowRoles(['user']), (req, res) => {
+  const walletAddress = req.session.user?.walletAddress || '';
+  const userKey = normalizeWalletAddress(walletAddress);
+  const user = userKey ? users[userKey] : null;
+  if (!user) {
+    req.flash('error', 'User profile not found. Please log in again.');
+    return res.redirect('/login');
+  }
+  const { name, address, contact } = req.body;
+  const errors = [];
+  if (!name) errors.push('Name is required.');
+  if (!address) errors.push('Address is required.');
+  if (!contact) errors.push('Contact number is required.');
+
+  if (errors.length) {
+    errors.forEach((msg) => req.flash('error', msg));
+    return res.redirect('/user/profile');
+  }
+
+  const updated = {
+    ...user,
+    name,
+    address,
+    contact
+  };
+  const entry = buildUserAuditEntry('updated', req.session.user?.walletAddress, user, updated);
+  updated.history = [...(user.history || []), entry];
+  users[userKey] = updated;
+  req.flash('success', 'Profile updated. Redirecting to product listings.');
+  return res.redirect('/shopping');
+});
+
 app.get('/register', (_req, res) => {
   res.render('registration');
 });
 
 app.post('/register', (req, res) => {
   const { name, walletAddress, address, contact, role } = req.body;
+  const walletAddressRaw = (walletAddress || '').trim();
   const errors = [];
   if (!name) errors.push('Name is required.');
-  if (!walletAddress) errors.push('Wallet address is required.');
+  if (!walletAddressRaw) errors.push('Wallet address is required.');
   if (!address) errors.push('Address is required.');
   if (!contact) errors.push('Contact number is required.');
   if (!role) errors.push('Role is required.');
   const allowedRoles = ['user', 'admin', 'delivery man'];
   if (role && !allowedRoles.includes(role)) errors.push('Invalid role selected.');
-  if (walletAddress && users[walletAddress]) errors.push('Wallet address already exists.');
+  if (walletAddressRaw && walletAddressExists(walletAddressRaw)) errors.push('Wallet address already exists.');
 
   if (errors.length) {
     errors.forEach((msg) => req.flash('error', msg));
@@ -190,7 +247,7 @@ app.post('/register', (req, res) => {
 
   const newUser = {
     name,
-    walletAddress,
+    walletAddress: walletAddressRaw,
     address,
     contact,
     role,
@@ -198,13 +255,21 @@ app.post('/register', (req, res) => {
     createdAt: new Date().toISOString(),
     history: []
   };
-  newUser.history.push(buildUserAuditEntry('created', walletAddress, null, newUser));
-  users[walletAddress] = newUser;
-  req.session.user = { walletAddress, role };
+  newUser.history.push(buildUserAuditEntry('created', walletAddressRaw, null, newUser));
+  setUserByWallet(walletAddressRaw, newUser);
+  req.session.user = { walletAddress: walletAddressRaw, role };
   req.flash('success', 'Registration successful.');
   if (role === 'admin') return res.redirect('/admin/dashboard');
   if (role === 'delivery man') return res.redirect('/delivery/dashboard');
   return res.redirect('/user/home');
+});
+
+app.get('/register/check-wallet', (req, res) => {
+  const walletAddress = (req.query.walletAddress || '').trim();
+  if (!walletAddress) {
+    return res.status(400).json({ error: 'Wallet address is required.' });
+  }
+  return res.json({ inUse: walletAddressExists(walletAddress) });
 });
 
 app.get('/login', (_req, res) => {
@@ -219,12 +284,13 @@ app.post('/logout', (req, res) => {
 
 app.post('/login', (req, res) => {
   const { walletAddress } = req.body;
-  if (!walletAddress) {
+  const walletAddressRaw = (walletAddress || '').trim();
+  if (!walletAddressRaw) {
     req.flash('error', 'Wallet address is required.');
     return res.redirect('/login');
   }
 
-  const user = users[walletAddress];
+  const user = getUserByWallet(walletAddressRaw);
   if (!user) {
     req.flash('error', 'Wallet address not found.');
     return res.redirect('/login');
@@ -304,7 +370,7 @@ app.get('/admin/users', allowRoles(['admin']), (_req, res) => {
 
 app.get('/admin/users/history/:walletAddress', allowRoles(['admin']), (req, res) => {
   const walletAddress = req.params.walletAddress;
-  const user = users[walletAddress] || null;
+  const user = getUserByWallet(walletAddress);
   if (!user) {
     req.flash('error', 'User not found.');
     return res.redirect('/admin/users');
@@ -315,7 +381,7 @@ app.get('/admin/users/history/:walletAddress', allowRoles(['admin']), (req, res)
 
 app.get('/admin/users/edit/:walletAddress', allowRoles(['admin']), (req, res) => {
   const walletAddress = req.params.walletAddress;
-  const user = users[walletAddress] || null;
+  const user = getUserByWallet(walletAddress);
   if (!user) {
     req.flash('error', 'User not found.');
     return res.redirect('/admin/users');
@@ -325,7 +391,8 @@ app.get('/admin/users/edit/:walletAddress', allowRoles(['admin']), (req, res) =>
 
 app.post('/admin/users/edit/:walletAddress', allowRoles(['admin']), (req, res) => {
   const targetWallet = req.params.walletAddress;
-  const user = users[targetWallet] || null;
+  const targetKey = normalizeWalletAddress(targetWallet);
+  const user = targetKey ? users[targetKey] : null;
   if (!user) {
     req.flash('error', 'User not found.');
     return res.redirect('/admin/users');
@@ -357,7 +424,7 @@ app.post('/admin/users/edit/:walletAddress', allowRoles(['admin']), (req, res) =
   const entry = buildUserAuditEntry('updated', req.session.user?.walletAddress, user, updated);
   updated.history = [...(user.history || []), entry];
 
-  users[targetWallet] = updated;
+  users[targetKey] = updated;
 
   req.flash('success', 'User profile updated (demo only).');
   res.redirect('/admin/users');
@@ -365,7 +432,8 @@ app.post('/admin/users/edit/:walletAddress', allowRoles(['admin']), (req, res) =
 
 app.post('/admin/deactivate-user/:walletAddress', allowRoles(['admin']), (req, res) => {
   const walletAddress = req.params.walletAddress;
-  const user = users[walletAddress] || null;
+  const userKey = normalizeWalletAddress(walletAddress);
+  const user = userKey ? users[userKey] : null;
   if (!user) {
     req.flash('error', 'User not found.');
     return res.redirect('/admin/users');
@@ -377,14 +445,15 @@ app.post('/admin/deactivate-user/:walletAddress', allowRoles(['admin']), (req, r
   const updated = { ...user, active: false };
   const entry = buildUserAuditEntry('deactivated', req.session.user?.walletAddress, user, updated);
   updated.history = [...(user.history || []), entry];
-  users[walletAddress] = updated;
+  users[userKey] = updated;
   req.flash('success', 'User deactivated (demo only).');
   res.redirect('/admin/users');
 });
 
 app.post('/admin/reactivate-user/:walletAddress', allowRoles(['admin']), (req, res) => {
   const walletAddress = req.params.walletAddress;
-  const user = users[walletAddress] || null;
+  const userKey = normalizeWalletAddress(walletAddress);
+  const user = userKey ? users[userKey] : null;
   if (!user) {
     req.flash('error', 'User not found.');
     return res.redirect('/admin/users');
@@ -396,7 +465,7 @@ app.post('/admin/reactivate-user/:walletAddress', allowRoles(['admin']), (req, r
   const updated = { ...user, active: true };
   const entry = buildUserAuditEntry('reactivated', req.session.user?.walletAddress, user, updated);
   updated.history = [...(user.history || []), entry];
-  users[walletAddress] = updated;
+  users[userKey] = updated;
   req.flash('success', 'User reactivated (demo only).');
   res.redirect('/admin/users');
 });
