@@ -63,7 +63,7 @@
         line-height: 1;
       }
       .layout {
-        max-width: 1100px;
+        max-width: 1200px;
         margin: 0 auto;
         display: grid;
         gap: 20px;
@@ -104,7 +104,7 @@
       table {
         width: 100%;
         border-collapse: collapse;
-        min-width: 980px;
+        min-width: 1100px;
       }
       th, td {
         text-align: left;
@@ -164,7 +164,7 @@
       <section class="title-card">
         <h1>Audit History</h1>
         <p>
-          <%= user.name %> (<%= user.email %>) - <%= user.active === false ? 'Deactivated' : 'Active' %>
+          <%= user.name %> (<%= user.walletAddress %>) - <%= user.active === false ? 'Deactivated' : 'Active' %>
         </p>
       </section>
 
@@ -181,7 +181,7 @@
         <% } else { %>
           <div class="filters">
             <input type="text" id="filterAction" placeholder="Filter by action (e.g. updated)" aria-label="Filter by action">
-            <input type="text" id="filterActor" placeholder="Filter by actor (email)" aria-label="Filter by actor">
+            <input type="text" id="filterActor" placeholder="Filter by actor (wallet)" aria-label="Filter by actor">
           </div>
           <table>
             <thead>

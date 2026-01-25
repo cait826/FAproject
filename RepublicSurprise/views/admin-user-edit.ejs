@@ -134,15 +134,15 @@
             <%= user.active === false ? 'Deactivated' : 'Active' %>
           </span>
         </p>
-        <form action="/admin/users/edit/<%= encodeURIComponent(user.email) %>" method="post">
+        <form action="/admin/users/edit/<%= encodeURIComponent(user.walletAddress) %>" method="post">
           <div class="grid">
             <div>
               <label for="name">Name</label>
               <input id="name" name="name" type="text" value="<%= user.name %>" required />
             </div>
             <div>
-              <label for="email">Email</label>
-              <input id="email" name="email" type="email" value="<%= user.email %>" required />
+              <label for="walletAddress">Wallet Address</label>
+              <input id="walletAddress" name="walletAddress" type="text" value="<%= user.walletAddress %>" readonly />
             </div>
             <div>
               <label for="role">Role</label>
@@ -163,7 +163,7 @@
           </div>
           <div class="actions">
             <button class="btn" type="submit">Save changes</button>
-            <a class="btn secondary" href="/admin/users/history/<%= encodeURIComponent(user.email) %>">View audit history</a>
+            <a class="btn secondary" href="/admin/users/history/<%= encodeURIComponent(user.walletAddress) %>">View audit history</a>
           </div>
         </form>
       </div>
