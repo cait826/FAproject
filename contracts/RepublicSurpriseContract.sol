@@ -326,7 +326,7 @@ contract RepublicSurpriseContract {
         emit UserStatusChanged(user, true);
     }
 
-    // ---------- Cart ----------
+    // ---------- Cart ---------- (angela)
     // NOTE: to support both individual/set pricing, we store isSet in cart items.
     struct CartItem {
         uint256 productId;
@@ -517,7 +517,7 @@ contract RepublicSurpriseContract {
         emit OrderStatusChanged(orderId, o.status);
     }
 
-    // ---------- User Order Tracking (legacy) ----------
+    // ---------- User Order Tracking (legacy) ---------- (angela)
     enum UserOrderStatus {
         Placed,
         Paid,
