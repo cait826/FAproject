@@ -961,8 +961,13 @@ app.get('/cart', allowRoles(['user']), (req, res) => {
 });
 
 // Payment and invoice views (frontend-only handlers)
-app.get('/payment', (req, res) => {
-  res.render('payment');
+app.get('/payment', allowRoles(['user']), (req, res) => {
+  const cart = getCart(req);
+  if (!cart.length) {
+    req.flash('error', 'Your cart is empty. Add items before proceeding to payment.');
+    return res.redirect('/cart');
+  }
+  return res.render('payment');
 });
 
 app.get('/invoice', (req, res) => {

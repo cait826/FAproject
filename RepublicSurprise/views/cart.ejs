@@ -138,9 +138,10 @@
       </header>
 
       <main class="layout">
+        <% const hasItems = cart && cart.length; %>
         <section class="panel">
           <h1>Your cart</h1>
-          <% if (!cart || !cart.length) { %>
+          <% if (!hasItems) { %>
             <div class="empty">
               Your cart is empty. Add a surprise box from the shop.
             </div>
@@ -181,7 +182,11 @@
             <span>S$<%= Number(totals.total || 0).toFixed(2) %></span>
           </div>
           <p class="note">Edit quantities or remove items before checkout.</p>
-          <button class="btn checkout" onclick="window.location.href='/payment'">Proceed to Payment</button>
+          <% if (hasItems) { %>
+            <a class="btn checkout" href="/payment" style="display:inline-block; text-align:center; text-decoration:none;">Proceed to Payment</a>
+          <% } else { %>
+            <button class="btn checkout" disabled>Proceed to Payment</button>
+          <% } %>
           <form method="post" action="/cart/clear" style="margin-top:10px;">
             <button class="btn alt" type="submit" style="width:100%;">Clear Cart</button>
           </form>
