@@ -183,7 +183,7 @@
           <p>No assigned deliveries yet.</p>
         <% } %>
 
-        <% if (pendingDeliveries && pendingDeliveries.length) { %>
+        <% if (typeof pendingDeliveries !== 'undefined' && pendingDeliveries && pendingDeliveries.length) { %>
           <div style="margin-top:36px; text-align:left;">
             <h3>Available deliveries to claim</h3>
           </div>
