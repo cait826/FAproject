@@ -65,7 +65,7 @@
     <div class="page card">
       <h1>Order <%= delivery.id %></h1>
       <p>Delivery order details.</p>
-      <div class="row"><div class="label">Customer Wallet</div><div><%= delivery.customer || delivery.fullName || 'N/A' %></div></div>
+      <div class="row"><div class="label">Customer full name</div><div><%= delivery.customerName || delivery.fullName || delivery.customer || 'Guest' %></div></div>
       <div class="row"><div class="label">Order Number</div><div><%= delivery.orderNumber || delivery.id %></div></div>
       <div class="row"><div class="label">Address</div><div><%= delivery.address || 'N/A' %></div></div>
       <div class="row"><div class="label">Contact Number</div><div><%= delivery.contact || 'N/A' %></div></div>

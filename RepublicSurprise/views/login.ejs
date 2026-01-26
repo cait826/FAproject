@@ -61,12 +61,21 @@
         cursor: pointer;
         transition: transform 0.15s ease, box-shadow 0.2s ease;
       }
+      #reopenPermissions {
+        background: var(--accent-2);
+      }
       button:hover { transform: translateY(-2px); box-shadow: 0 10px 22px rgba(251,191,36,0.35); }
+      button#reopenPermissions:hover { box-shadow: 0 10px 22px rgba(46,196,182,0.35); }
       button:disabled { opacity: 0.6; cursor: not-allowed; box-shadow: none; }
       .status {
         font-size: 0.9rem;
         color: var(--muted);
         min-height: 18px;
+      }
+      .helper {
+        margin: 12px 0 0;
+        font-size: 0.85rem;
+        color: var(--muted);
       }
       .status.error { color: var(--error); }
       .links { margin-top: 12px; font-size: 0.9rem; }
@@ -103,7 +112,7 @@
     </style>
   </head>
   <body>
-    <%- include('partials/header') %>
+    <%- include('partials/header', { hideLoginButton: true }) %>
     <div class="card">
       <h1>Login</h1>
       <p>Connect your MetaMask wallet to access your account.</p>
@@ -125,6 +134,8 @@
         <button type="button" id="connectWallet">Connect MetaMask</button>
         <button type="submit" id="loginBtn" disabled>Sign in</button>
         <div class="status" id="status"></div>
+        <p class="helper">Need to switch accounts? Open the MetaMask extension or press the button below to re-open the permissions dialog.</p>
+        <button type="button" id="reopenPermissions">Re-open MetaMask Accounts</button>
       </form>
       <div class="links">
         No account? <a href="/register">Register here</a>
@@ -144,6 +155,24 @@
         statusEl.className = isError ? 'status error' : 'status';
       };
 
+      const validateAccount = async (account) => {
+        try {
+          const response = await fetch(`/register/check-wallet?walletAddress=${encodeURIComponent(account)}`);
+          if (!response.ok) throw new Error('Unable to verify wallet.');
+          const payload = await response.json();
+          if (!payload.inUse) {
+            setStatus('Wallet not registered yet. Please register before logging in.', true);
+            return false;
+          }
+          setStatus('Wallet connected and registered.', false);
+          return true;
+        } catch (err) {
+          console.error(err);
+          setStatus('Unable to verify wallet. Try again.', true);
+          return false;
+        }
+      };
+
       const connectWallet = async () => {
         if (!window.ethereum) {
           setStatus('MetaMask not detected. Please install MetaMask.', true);
@@ -158,14 +187,42 @@
             return;
           }
           walletInput.value = account;
-          loginBtn.disabled = false;
-          setStatus('Wallet connected.', false);
+          const isRegistered = await validateAccount(account);
+          loginBtn.disabled = !isRegistered;
         } catch (err) {
           setStatus(err && err.message ? err.message : 'Unable to connect wallet.', true);
         }
       };
 
       connectBtn.addEventListener('click', connectWallet);
+
+      const reopenBtn = document.getElementById('reopenPermissions');
+      const promptPermissionsDialog = async () => {
+        if (!window.ethereum) {
+          setStatus('MetaMask not detected. Please install MetaMask.', true);
+          return;
+        }
+        try {
+          setStatus('Opening MetaMask permissions...', false);
+          await window.ethereum.request({
+            method: 'wallet_requestPermissions',
+            params: [{ eth_accounts: {} }],
+          });
+          const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+          const account = (accounts && accounts[0]) || '';
+          if (!account) {
+            setStatus('No wallet selected.', true);
+            return;
+          }
+          walletInput.value = account;
+          const isRegistered = await validateAccount(account);
+          loginBtn.disabled = !isRegistered;
+        } catch (err) {
+          setStatus(err && err.message ? err.message : 'Unable to reopen MetaMask dialog.', true);
+        }
+      };
+      reopenBtn.addEventListener('click', promptPermissionsDialog);
+
       form.addEventListener('submit', (e) => {
         if (!walletInput.value) {
           e.preventDefault();

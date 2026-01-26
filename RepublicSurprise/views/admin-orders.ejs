@@ -159,16 +159,30 @@
                   <td><a href="/admin/orders/<%= order.id %>"><%= order.id %></a></td>
                   <td>
                     <% if (relatedDeliveries.length) { %>
-                      <% relatedDeliveries.forEach(function(del, di){ 
-                           const label = del.deliveryId || ('DEL-' + ('000' + (di+1)).slice(-3));
-                           const linkId = del.deliveryId || del.id;
-                       %>
-                        <div><a href="/admin/delivery/<%= linkId %>"><%= label %></a></div>
-                      <% }); %>
+                    <% relatedDeliveries.forEach(function(del, di){ 
+                         const label = del.deliveryId || ('DEL-' + ('000' + (di+1)).slice(-3));
+                         const linkId = del.deliveryId || del.id;
+                         const driver = drivers?.[(del.assignedTo || '').toLowerCase()];
+                     %>
+                      <div><a href="/admin/delivery/<%= linkId %>"><%= label %></a></div>
+                      <% if (driver) { %>
+                        <div style="font-size:0.75rem; color:#6b7280;">Driver: <%= driver.name || driver.walletAddress %></div>
+                      <% } else if (del.assignedTo) { %>
+                        <div style="font-size:0.75rem; color:#6b7280;">Driver wallet: <%= del.assignedTo %></div>
+                      <% } %>
+                    <% }); %>
                     <% } else { %>-<% } %>
                   </td>
                   <td><%= order.product %></td>
-                  <td><%= order.customer %></td>
+                  <td>
+                    <div><strong><%= order.customerName || order.customer || 'Guest' %></strong></div>
+                    <% if (order.address) { %>
+                      <div style="font-size:0.75rem; color:#6b7280;">Address: <%= order.address %></div>
+                    <% } %>
+                    <% if (order.contact) { %>
+                      <div style="font-size:0.75rem; color:#6b7280;">Contact: <%= order.contact %></div>
+                    <% } %>
+                  </td>
                   <td>$<%= Number(order.price || 0).toFixed(2) %></td>
                   <td><%= order.qty %></td>
                   <td>

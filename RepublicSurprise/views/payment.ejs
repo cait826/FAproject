@@ -298,6 +298,7 @@
     const COINGECKO_URL = 'https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=sgd';
     const SERVER_CUSTOMER_NAME = <%- JSON.stringify((user && user.name) ? user.name : '') %>;
     const SERVER_CUSTOMER_ADDRESS = <%- JSON.stringify((user && user.address) ? user.address : '') %>;
+    const SERVER_CUSTOMER_CONTACT = <%- JSON.stringify((user && user.contact) ? user.contact : '') %>;
 
     const $ = id => document.getElementById(id);
 
@@ -520,7 +521,11 @@
       const payload = {
         orderId: tracking.orderId,
         customerName: SERVER_CUSTOMER_NAME || inv.wallet,
-        address: SERVER_CUSTOMER_ADDRESS || ''
+        address: SERVER_CUSTOMER_ADDRESS || '',
+        contact: SERVER_CUSTOMER_CONTACT || '',
+        customerWallet: account || '',
+        items: chk.items || [],
+        total: chk.total || 0
       };
       fetch('/create-delivery', {
         method: 'POST',
@@ -530,6 +535,26 @@
         try{ const body = await res.json(); console.log('delivery created', body); }catch(e){ console.warn(e); }
       }).catch((err) => {
         console.warn('Failed to create delivery record', err);
+      });
+
+      const orderPayload = {
+        orderId: tracking.orderId,
+        customerWallet: account || '',
+        customerName: SERVER_CUSTOMER_NAME || inv.wallet,
+        contact: SERVER_CUSTOMER_CONTACT || '',
+        product: (chk.items || []).map((it) => it.name).filter(Boolean).join(' + ') || 'Mystery Items',
+        price: chk.total || 0,
+        qty: (chk.items || []).reduce((sum, it) => sum + (Number(it.qty) || 0), 0) || 1,
+        status: 'Pending Delivery Confirmation'
+      };
+      fetch('/create-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(orderPayload)
+      }).then(async (res) => {
+        try { const body = await res.json(); console.log('order created', body); } catch (e) { console.warn(e); }
+      }).catch((err) => {
+        console.warn('Failed to create order record', err);
       });
 
       // show invoice for a brief moment until redirect triggers

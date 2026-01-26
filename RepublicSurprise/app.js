@@ -14,6 +14,8 @@ let lastProductId = null;
 const upload = multer({ storage: multer.memoryStorage(), limits: { files: 3 } });
 
 const normalizeWalletAddress = (address) => (address || '').trim().toLowerCase();
+const normalizeDisplayName = (value) => (value || '').trim().toLowerCase();
+const normalizeContactNumber = (value) => (value || '').replace(/\D/g, '');
 const getUserByWallet = (address) => {
   const key = normalizeWalletAddress(address);
   if (!key) return null;
@@ -26,6 +28,16 @@ const setUserByWallet = (address, data) => {
   return key;
 };
 const walletAddressExists = (address) => !!getUserByWallet(address);
+const displayNameExists = (name) => {
+  const normalized = normalizeDisplayName(name);
+  if (!normalized) return false;
+  return Object.values(users).some((user) => normalizeDisplayName(user.name) === normalized);
+};
+const contactNumberExists = (contact) => {
+  const normalized = normalizeContactNumber(contact);
+  if (!normalized) return false;
+  return Object.values(users).some((user) => normalizeContactNumber(user.contact) === normalized);
+};
 
 const getActiveProducts = () => products.filter((item) => item.active !== false);
 
@@ -239,6 +251,8 @@ app.post('/register', (req, res) => {
   const allowedRoles = ['user', 'admin', 'delivery man'];
   if (role && !allowedRoles.includes(role)) errors.push('Invalid role selected.');
   if (walletAddressRaw && walletAddressExists(walletAddressRaw)) errors.push('Wallet address already exists.');
+  if (name && displayNameExists(name)) errors.push('Full name already exists. Please use another name.');
+  if (contact && contactNumberExists(contact)) errors.push('Contact number already exists. Please use a different number.');
 
   if (errors.length) {
     errors.forEach((msg) => req.flash('error', msg));
@@ -311,7 +325,12 @@ app.get('/admin/dashboard', allowRoles(['admin']), (req, res) => {
   res.render('admin-home');
 });
 app.get('/admin/orders', allowRoles(['admin']), (_req, res) => {
-  res.render('admin-orders', { orders, deliveries });
+  const driversByWallet = Object.values(users).reduce((acc, user) => {
+    const key = normalizeWalletAddress(user.walletAddress);
+    if (key) acc[key] = user;
+    return acc;
+  }, {});
+  res.render('admin-orders', { orders, deliveries, drivers: driversByWallet });
 });
 
 app.get('/admin/orders/:id', allowRoles(['admin']), (req, res) => {
@@ -556,17 +575,27 @@ const refundTickets = [
 // Create a delivery record (called from payment page after successful payment)
 // Create a delivery record (called from payment page after successful payment)
 app.post('/create-delivery', (req, res) => {
-  const { orderId, customerName: bodyName, address: bodyAddress, customerWallet } = req.body || {};
+  const { orderId, customerName: bodyName, address: bodyAddress, customerWallet, contact: bodyContact } = req.body || {};
   if (!orderId) return res.status(400).json({ error: 'orderId is required' });
   const newId = 'DEL-' + Date.now().toString().slice(-6);
   // Prefer explicit name/address from request; otherwise try to resolve from wallet
   let customerName = bodyName || 'Guest';
   let address = bodyAddress || '';
+  let contact = bodyContact || '';
+  if ((!bodyName || !bodyName.length || !bodyAddress) && customerWallet) {
+    const user = getUserByWallet(customerWallet);
+    if (user) {
+      customerName = user.name || customerWallet;
+      address = user.address || address;
+      contact = user.contact || contact;
+    }
+  }
   if ((!bodyName || !bodyName.length) && customerWallet) {
     const user = getUserByWallet(customerWallet);
     if (user) {
       customerName = user.name || customerWallet;
       address = user.address || '';
+      contact = user.contact || '';
     } else {
       customerName = customerWallet;
     }
@@ -577,12 +606,52 @@ app.post('/create-delivery', (req, res) => {
     orderNumber: orderId,
     customerName,
     address,
+    contact,
+    customerWallet: customerWallet || '',
     status: 'pending',
-    proofImage: null,
-    contact: ''
+    assignedTo: null,
+    assignedAt: null,
+    proofImage: null
   };
   deliveries.push(entry);
   return res.json({ success: true, delivery: entry });
+});
+
+app.post('/create-order', (req, res) => {
+  const { orderId, customerWallet, customerName: bodyName, contact: bodyContact, address: bodyAddress, product, price, qty, status } = req.body || {};
+  if (!orderId) {
+    return res.status(400).json({ error: 'orderId is required' });
+  }
+  const existing = orders.find((o) => o.id === orderId || o.orderId === orderId);
+  if (existing) {
+    return res.json({ success: true, order: existing });
+  }
+  let customerName = bodyName;
+  let contact = bodyContact;
+  let address = bodyAddress;
+  if (customerWallet) {
+    const user = getUserByWallet(customerWallet);
+    if (user) {
+      customerName = customerName || user.name || customerWallet;
+      contact = contact || user.contact || '';
+      address = address || user.address || '';
+    }
+  }
+  const entry = {
+    id: orderId,
+    product: product || 'Mystery order',
+    customer: customerWallet || customerName || 'Guest',
+    customerWallet: customerWallet || '',
+    customerName: customerName || customerWallet || 'Guest',
+    contact: contact || '',
+    address: address || '',
+    price: Number(price) || 0,
+    qty: Number(qty) || 1,
+    status: status || 'Pending Delivery Confirmation',
+    createdAt: new Date().toISOString()
+  };
+  orders.push(entry);
+  return res.json({ success: true, order: entry });
 });
 
 // Alias to the delivery dashboard
@@ -596,23 +665,20 @@ app.get('/delivery/dashboard', allowRoles(['delivery man']), (req, res) => {
   const user = getUserByWallet(wallet);
   const deliveryName = (user && user.name) ? user.name : (wallet || 'Delivery User');
 
-  // deliveries assigned to current delivery man
-  const assignedList = deliveries.filter((d) => d.assignedTo === wallet);
-  // pending deliveries (unassigned) visible to all delivery men so they can pick
-  const pendingList = deliveries.filter((d) => d.status === 'pending');
+  const normalizedWallet = normalizeWalletAddress(wallet);
+  const assignedList = deliveries.filter((d) => normalizeWalletAddress(d.assignedTo) === normalizedWallet);
+  const pendingList = deliveries.filter((d) => !d.assignedTo && d.status === 'pending');
 
-  // compute stats for this delivery man (assigned + pending visible)
   const stats = {
-    assigned: assignedList.filter((d) => d.status === 'assigned' || d.status === 'out_for_delivery').length,
+    assigned: assignedList.filter((d) => ['assigned', 'out_for_delivery'].includes(String(d.status).toLowerCase())).length,
     pending: pendingList.length,
-    delivered_pending: assignedList.filter((d) => d.status === 'delivered_pending').length
+    delivered_pending: assignedList.filter((d) => String(d.status).toLowerCase() === 'delivered_pending').length
   };
 
-  // start with both assigned and pending deliveries
-  let list = [...assignedList, ...pendingList];
+  let list = [...assignedList];
   const q = (req.query.q || '').toLowerCase().trim();
-  const statusFilter = req.query.status || '';
-  if (statusFilter) list = list.filter((d) => String(d.status).toLowerCase() === String(statusFilter).toLowerCase());
+  const statusFilter = (req.query.status || '').toLowerCase();
+  if (statusFilter) list = list.filter((d) => String(d.status || '').toLowerCase() === statusFilter);
   if (q) {
     list = list.filter((d) => {
       const customer = String(d.customerName || d.customer || '').toLowerCase();
@@ -622,10 +688,29 @@ app.get('/delivery/dashboard', allowRoles(['delivery man']), (req, res) => {
     });
   }
 
-  // provide simplified fields to the view
-  const viewDeliveries = list.map((d) => ({ id: d.id, orderNumber: d.orderNumber, address: d.address || '', status: d.status || '', customerName: d.customerName || '' }));
+  const viewDeliveries = list.map((d) => ({
+    id: d.id,
+    deliveryId: d.deliveryId || d.id,
+    orderNumber: d.orderNumber,
+    address: d.address || '',
+    status: d.status || '',
+    customerName: d.customerName || d.customer || '',
+    customerWallet: d.customerWallet || d.customer || '',
+    contact: d.contact || '',
+    items: d.items || []
+  }));
 
-  res.render('delivery-home', { deliveries: viewDeliveries, deliveryName, stats });
+  const viewPending = pendingList.map((d) => ({
+    id: d.id,
+    deliveryId: d.deliveryId || d.id,
+    orderNumber: d.orderNumber,
+    address: d.address || '',
+    customerName: d.customerName || d.customer || '',
+    customerWallet: d.customerWallet || d.customer || '',
+    contact: d.contact || ''
+  }));
+
+  res.render('delivery-home', { deliveries: viewDeliveries, pendingDeliveries: viewPending, deliveryName, stats });
 });
 
 // Assign a pending delivery to the current delivery user
@@ -672,6 +757,21 @@ app.get('/deliveries/:id', allowRoles(['delivery man', 'admin']), (req, res) => 
     }
   }
   res.render('delivery-order-detail', { delivery });
+});
+
+app.post('/deliveries/:id/claim', allowRoles(['delivery man']), (req, res) => {
+  const id = req.params.id;
+  const delivery = deliveries.find((d) => d.id === id || d.deliveryId === id) || null;
+  if (!delivery || delivery.assignedTo) {
+    req.flash('error', 'Delivery not found or already assigned.');
+    return res.redirect('/delivery/dashboard');
+  }
+  const wallet = req.session.user?.walletAddress;
+  delivery.assignedTo = normalizeWalletAddress(wallet);
+  delivery.assignedAt = new Date().toISOString();
+  delivery.status = 'out_for_delivery';
+  req.flash('success', `Delivery ${delivery.deliveryId || delivery.id} assigned to you.`);
+  res.redirect('/delivery/dashboard');
 });
 
 // Submit proof of delivery (photo + remarks + optional signature)
