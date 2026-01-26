@@ -624,6 +624,7 @@ app.post('/create-order', (req, res) => {
   }
   const existing = orders.find((o) => o.id === orderId || o.orderId === orderId);
   if (existing) {
+    req.session.cart = [];
     return res.json({ success: true, order: existing });
   }
   let customerName = bodyName;
@@ -651,6 +652,7 @@ app.post('/create-order', (req, res) => {
     createdAt: new Date().toISOString()
   };
   orders.push(entry);
+  req.session.cart = [];
   return res.json({ success: true, order: entry });
 });
 
