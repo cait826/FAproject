@@ -19,6 +19,7 @@
         </nav>
       <% } %>
     </div>
+    <% const showLoginButton = typeof hideLoginButton === 'undefined' || !hideLoginButton; %>
     <% if (user) { %>
       <form method="post" action="/logout" style="margin:0;">
         <button type="submit" style="
@@ -32,7 +33,7 @@
           box-shadow:0 8px 16px rgba(255,159,28,0.25);
         ">Logout</button>
       </form>
-    <% } else if (!hideLoginButton) { %>
+    <% } else if (showLoginButton) { %>
       <a href="/login" style="
         background:#2ec4b6;
         color:#0f172a;
