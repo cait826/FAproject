@@ -62,6 +62,7 @@ const products = [
   seedProduct('sweet-bun', 'Sweet Bun', 20.9, 12, 'Single box', '/images/sweet_bun.png', 'Fluffy friend for cozy nights.')
 ];
 const deliveries = [];
+const orders = [];
 const DELIVERY_STATUS = {
   PENDING: 'pending',
   OUT_FOR_DELIVERY: 'out_for_delivery',
@@ -215,7 +216,7 @@ app.get('/order-tracking', (_req, res) => {
     user: currentUser,
     errorMessages: [],
     successMessages: [],
-    orders: []
+    orders: getOrdersForUser(currentUser)
   });
 });
 
@@ -308,6 +309,20 @@ app.post('/deliveries/:id/submit-proof', deliveryProofUpload.single('proofImage'
   delivery.remarks = req.body.remarks || delivery.remarks || '';
   delivery.signature = req.body.signature || delivery.signature || '';
   delivery.status = DELIVERY_STATUS.DELIVERED_PENDING;
+  const relatedOrder = orders.find(
+    (item) => String(item.id) === String(delivery.orderNumber || delivery.id)
+  );
+  if (relatedOrder) {
+    relatedOrder.status = 'Pending Delivery Confirmation';
+    relatedOrder.action = 'delivery proof submitted';
+    relatedOrder.auditLog = relatedOrder.auditLog || [];
+    relatedOrder.auditLog.push({
+      action: 'Delivery proof submitted',
+      timestamp: new Date().toISOString(),
+      function: 'submitProof',
+      txHash: '0xDEMO'
+    });
+  }
   res.redirect('/delivery/dashboard');
 });
 
@@ -519,6 +534,103 @@ function respondCart(req, res, payload) {
   return res.json(payload);
 }
 
+function getOrdersForUser(user) {
+  const wallet = (user?.walletAddress || '').toLowerCase();
+  return orders.filter((order) => (order.customer || '').toLowerCase() === wallet);
+}
+
+function getDriversMap() {
+  return Object.values(users).reduce((acc, user) => {
+    if ((user.role || '').toLowerCase() === 'delivery man') {
+      acc[(user.walletAddress || '').toLowerCase()] = user;
+    }
+    return acc;
+  }, {});
+}
+
+function ensureDemoCart(wallet) {
+  const cart = carts[wallet] || [];
+  if (cart.length) return cart;
+  const picks = products.slice(0, 2);
+  const seeded = picks.map((item, idx) => ({
+    id: item.id,
+    name: item.name,
+    price: Number(item.price || 0),
+    qty: idx === 0 ? 2 : 1
+  }));
+  carts[wallet] = seeded;
+  return seeded;
+}
+
+function createOrderFromCart(user, cart) {
+  const nextId = orders.length + 1;
+  const orderId = `ORD-${String(nextId).padStart(4, '0')}`;
+  const primary = cart[0] || {};
+  const qtyTotal = cart.reduce((sum, item) => sum + Number(item.qty || 0), 0);
+  const priceTotal = cart.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.qty || 0), 0);
+  const order = {
+    id: orderId,
+    product: cart.length > 1 ? `${primary.name || 'Item'} + ${cart.length - 1} more` : primary.name || 'Item',
+    customer: (user.walletAddress || '').toLowerCase(),
+    customerName: user.name || 'Customer',
+    address: user.address || 'N/A',
+    contact: user.contact || 'N/A',
+    price: priceTotal,
+    qty: qtyTotal,
+    status: 'Pending',
+    action: 'order creation',
+    auditLog: [
+      {
+        action: 'Order created',
+        timestamp: new Date().toISOString(),
+        function: 'createOrder',
+        txHash: '0xDEMO'
+      }
+    ]
+  };
+  orders.push(order);
+  return order;
+}
+
+function createDemoDelivery(order, user) {
+  const nextId = deliveries.length ? deliveries.length + 1 : 1;
+  const assignedTo =
+    (user.role || '').toLowerCase() === 'delivery man' ? user.walletAddress || '' : '';
+  const status = assignedTo ? DELIVERY_STATUS.OUT_FOR_DELIVERY : DELIVERY_STATUS.PENDING;
+  deliveries.push({
+    id: nextId,
+    deliveryId: `DEL-${String(nextId).padStart(3, '0')}`,
+    orderNumber: order.id,
+    customer: order.customer,
+    customerName: order.customerName,
+    address: order.address || 'N/A',
+    contact: order.contact || 'N/A',
+    status,
+    proofImage: null,
+    assignedTo
+  });
+}
+
+function buildTrackingPayload(order, cart) {
+  const placedAt = new Date().toISOString();
+  return {
+    orderId: order.id,
+    invoiceId: `INV-${order.id}`,
+    placedAt,
+    items: cart.map((item) => ({
+      name: item.name,
+      qty: item.qty,
+      price: item.price
+    })),
+    statusHistory: [
+      { label: 'Order placed', time: placedAt },
+      { label: 'Out for delivery', time: placedAt },
+      { label: 'Pending delivery confirmation', time: placedAt }
+    ],
+    sgdRate: 1
+  };
+}
+
 function seedProduct(
   id,
   name,
@@ -664,8 +776,106 @@ app.get('/admin/orders', (_req, res) => {
     user: currentUser,
     errorMessages: [],
     successMessages: [],
-    orders: []
+    orders: orders.slice().reverse(),
+    deliveries,
+    drivers: getDriversMap()
   });
+});
+
+app.get('/admin/orders/:id', (req, res) => {
+  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
+  const order = orders.find((item) => String(item.id) === String(req.params.id));
+  if (!order) return res.status(404).send('Order not found');
+  res.render('admin-order-detail', {
+    user: currentUser,
+    order,
+    errorMessages: [],
+    successMessages: []
+  });
+});
+
+app.get('/admin/orders/check/:id', (req, res) => {
+  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
+  const order = orders.find((item) => String(item.id) === String(req.params.id));
+  if (!order) return res.status(404).send('Order not found');
+  const delivery = deliveries.find(
+    (item) => String(item.orderNumber || item.id) === String(order.id)
+  );
+  res.render('admin-order-completion-check', {
+    user: currentUser,
+    order,
+    delivery,
+    errorMessages: [],
+    successMessages: []
+  });
+});
+
+app.post('/admin/orders/confirm/:id', (req, res) => {
+  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
+  const order = orders.find((item) => String(item.id) === String(req.params.id));
+  if (!order) return res.status(404).send('Order not found');
+  order.status = 'Completed';
+  order.action = 'delivery completion';
+  order.auditLog = order.auditLog || [];
+  order.auditLog.push({
+    action: 'Order completed',
+    timestamp: new Date().toISOString(),
+    function: 'confirmDelivery',
+    txHash: '0xDEMO'
+  });
+  const delivery = deliveries.find(
+    (item) => String(item.orderNumber || item.id) === String(order.id)
+  );
+  if (delivery) delivery.status = DELIVERY_STATUS.COMPLETED;
+  res.redirect('/admin/orders');
+});
+
+app.get('/admin/delivery/:id', (req, res) => {
+  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
+  const delivery = deliveries.find(
+    (item) => String(item.deliveryId || item.id) === String(req.params.id)
+  );
+  if (!delivery) return res.status(404).send('Delivery not found');
+  const deliveryView = { ...delivery, status: toDeliveryDisplayStatus(delivery.status) };
+  res.render('delivery-order-detail', {
+    user: currentUser,
+    delivery: deliveryView,
+    errorMessages: [],
+    successMessages: []
+  });
+});
+
+app.get('/demo/seed-order', (req, res) => {
+  if (!currentUser) return res.redirect('/login');
+  const wallet = (currentUser.walletAddress || '').toLowerCase();
+  const cart = ensureDemoCart(wallet);
+  const order = createOrderFromCart(currentUser, cart);
+  createDemoDelivery(order, currentUser);
+
+  if (currentUser.role === 'admin') return res.redirect('/admin/orders');
+  if (currentUser.role === 'delivery man') return res.redirect('/delivery/dashboard');
+
+  const trackingPayload = buildTrackingPayload(order, cart);
+  const trackingJson = JSON.stringify(trackingPayload);
+  res.set('Content-Type', 'text/html');
+  return res.send(`<!DOCTYPE html>
+<html lang="en">
+  <head><meta charset="UTF-8"><title>Seeding Demo Order</title></head>
+  <body>
+    <script>
+      (function() {
+        var TRACKING_KEY = 'ORDER_TRACKING_DATA';
+        var incoming = ${trackingJson};
+        var existing = [];
+        try { existing = JSON.parse(sessionStorage.getItem(TRACKING_KEY) || '[]'); } catch (e) { existing = []; }
+        if (!Array.isArray(existing)) existing = [];
+        existing.push(incoming);
+        sessionStorage.setItem(TRACKING_KEY, JSON.stringify(existing));
+        window.location.href = '/order-tracking?orderId=' + encodeURIComponent(incoming.orderId || '');
+      })();
+    </script>
+  </body>
+</html>`);
 });
 
 app.get('/admin/users', (_req, res) => {
