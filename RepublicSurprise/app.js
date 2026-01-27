@@ -61,6 +61,14 @@ const products = [
   seedProduct('zimama', 'Zimama', 37.9, 3, 'Single box', '/images/zimama.png', 'Forest critter guardian.'),
   seedProduct('sweet-bun', 'Sweet Bun', 20.9, 12, 'Single box', '/images/sweet_bun.png', 'Fluffy friend for cozy nights.')
 ];
+const deliveries = [];
+const DELIVERY_STATUS = {
+  PENDING: 'pending',
+  OUT_FOR_DELIVERY: 'out_for_delivery',
+  DELIVERED_PENDING: 'delivered_pending',
+  COMPLETED: 'completed'
+};
+const deliveryProofUpload = multer({ storage: multer.memoryStorage() });
 
 // Home page
 app.get('/', (_req, res) => {
@@ -220,6 +228,164 @@ app.get('/support', (_req, res) => {
   });
 });
 
+// Delivery dashboard + status flows
+app.get('/delivery/dashboard', (_req, res) => {
+  if (!currentUser || currentUser.role !== 'delivery man') return res.redirect('/login');
+  const wallet = (currentUser.walletAddress || '').toLowerCase();
+  const assignedDeliveries = deliveries.filter(
+    (delivery) => (delivery.assignedTo || '').toLowerCase() === wallet
+  );
+  const pendingDeliveries = deliveries.filter(
+    (delivery) => !delivery.assignedTo && delivery.status === DELIVERY_STATUS.PENDING
+  );
+  res.render('delivery-home', {
+    user: currentUser,
+    deliveryName: currentUser.name || 'Delivery Partner',
+    deliveries: assignedDeliveries,
+    pendingDeliveries,
+    stats: computeDeliveryStats(assignedDeliveries),
+    errorMessages: [],
+    successMessages: []
+  });
+});
+
+app.get('/delivery-history', (_req, res) => {
+  if (!currentUser || currentUser.role !== 'delivery man') return res.redirect('/login');
+  const wallet = (currentUser.walletAddress || '').toLowerCase();
+  const history = deliveries
+    .filter((delivery) => (delivery.assignedTo || '').toLowerCase() === wallet)
+    .filter((delivery) =>
+      [DELIVERY_STATUS.DELIVERED_PENDING, DELIVERY_STATUS.COMPLETED].includes(delivery.status)
+    )
+    .map((delivery) => ({ ...delivery, status: toDeliveryDisplayStatus(delivery.status) }));
+  res.render('delivery-history', {
+    user: currentUser,
+    deliveryName: currentUser.name || 'Delivery Partner',
+    history,
+    errorMessages: [],
+    successMessages: []
+  });
+});
+
+app.get('/delivery/order/:id', (req, res) => {
+  if (!currentUser) return res.redirect('/login');
+  const delivery = deliveries.find((item) => String(item.id) === String(req.params.id));
+  if (!delivery) return res.status(404).send('Delivery not found');
+  const deliveryView = { ...delivery, status: toDeliveryDisplayStatus(delivery.status) };
+  res.render('delivery-order-detail', {
+    user: currentUser,
+    delivery: deliveryView,
+    errorMessages: [],
+    successMessages: []
+  });
+});
+
+app.post('/deliveries/:id/claim', (req, res) => {
+  if (!currentUser || currentUser.role !== 'delivery man') return res.redirect('/login');
+  const delivery = deliveries.find((item) => String(item.id) === String(req.params.id));
+  if (!delivery) return res.status(404).send('Delivery not found');
+  delivery.assignedTo = currentUser.walletAddress || '';
+  delivery.deliveryName = currentUser.name || 'Delivery Partner';
+  if (delivery.status === DELIVERY_STATUS.PENDING) {
+    delivery.status = DELIVERY_STATUS.OUT_FOR_DELIVERY;
+  }
+  res.redirect('/delivery/dashboard');
+});
+
+app.post('/deliveries/:id/submit-proof', deliveryProofUpload.single('proofImage'), (req, res) => {
+  if (!currentUser || currentUser.role !== 'delivery man') return res.redirect('/login');
+  const delivery = deliveries.find((item) => String(item.id) === String(req.params.id));
+  if (!delivery) return res.status(404).send('Delivery not found');
+  if ((delivery.assignedTo || '') !== (currentUser.walletAddress || '')) {
+    return res.status(403).send('Not assigned to this delivery');
+  }
+  if (req.file) {
+    delivery.proofImage = {
+      data: req.file.buffer.toString('base64'),
+      mimetype: req.file.mimetype
+    };
+  }
+  delivery.remarks = req.body.remarks || delivery.remarks || '';
+  delivery.signature = req.body.signature || delivery.signature || '';
+  delivery.status = DELIVERY_STATUS.DELIVERED_PENDING;
+  res.redirect('/delivery/dashboard');
+});
+
+app.get('/delivery/add-status', (_req, res) => {
+  if (!currentUser || (currentUser.role !== 'delivery man' && currentUser.role !== 'admin')) {
+    return res.redirect('/login');
+  }
+  res.render('delivery-add-status', {
+    user: currentUser,
+    errorMessages: [],
+    successMessages: []
+  });
+});
+
+app.post('/delivery/add-status', (req, res) => {
+  if (!currentUser || (currentUser.role !== 'delivery man' && currentUser.role !== 'admin')) {
+    return res.redirect('/login');
+  }
+  const { orderNumber, customer, status } = req.body || {};
+  if (!orderNumber || !customer) {
+    return res.status(400).render('delivery-add-status', {
+      user: currentUser,
+      errorMessages: ['Order number and customer wallet are required.'],
+      successMessages: []
+    });
+  }
+  const nextId = deliveries.length ? deliveries.length + 1 : 1;
+  deliveries.push({
+    id: nextId,
+    deliveryId: orderNumber,
+    orderNumber,
+    customer,
+    customerName: customer,
+    address: 'N/A',
+    contact: 'N/A',
+    status: normalizeDeliveryStatus(status)
+  });
+  res.render('delivery-add-status', {
+    user: currentUser,
+    errorMessages: [],
+    successMessages: ['Delivery record added (demo, not persisted).']
+  });
+});
+
+app.get('/delivery/update-status', (_req, res) => {
+  if (!currentUser || (currentUser.role !== 'delivery man' && currentUser.role !== 'admin')) {
+    return res.redirect('/login');
+  }
+  const deliveriesForView = deliveries.map((delivery) => ({
+    ...delivery,
+    status: toDeliveryDisplayStatus(delivery.status)
+  }));
+  res.render('delivery-update-status', {
+    user: currentUser,
+    deliveries: deliveriesForView,
+    errorMessages: [],
+    successMessages: []
+  });
+});
+
+app.post('/delivery/update-status', upload.single('proof'), (req, res) => {
+  if (!currentUser || (currentUser.role !== 'delivery man' && currentUser.role !== 'admin')) {
+    return res.redirect('/login');
+  }
+  const { id, status } = req.body || {};
+  const delivery = deliveries.find((item) => String(item.id) === String(id));
+  if (!delivery) return res.status(404).send('Delivery not found');
+  const normalized = normalizeDeliveryStatus(status);
+  if (normalized === DELIVERY_STATUS.COMPLETED && currentUser.role !== 'admin') {
+    return res.status(403).send('Only admins can complete deliveries');
+  }
+  delivery.status = normalized;
+  if (req.file && normalized === DELIVERY_STATUS.DELIVERED_PENDING) {
+    delivery.proofImage = `/images/${req.file.filename}`;
+  }
+  res.redirect('/delivery/update-status');
+});
+
 // Update profile
 app.post('/user/profile', (req, res) => {
   if (!currentUser) return res.redirect('/login');
@@ -309,6 +475,40 @@ function getCartTotals(cart = []) {
   const shipping = subtotal > 0 ? 5 : 0;
   const total = subtotal + shipping;
   return { subtotal, shipping, total };
+}
+
+function normalizeDeliveryStatus(status = '') {
+  const value = String(status).trim().toLowerCase();
+  if (value === 'pending') return DELIVERY_STATUS.PENDING;
+  if (value === 'pending confirmation') return DELIVERY_STATUS.DELIVERED_PENDING;
+  if (value === 'out for delivery' || value === 'out_for_delivery') return DELIVERY_STATUS.OUT_FOR_DELIVERY;
+  if (value === 'delivered pending' || value === 'delivered_pending') return DELIVERY_STATUS.DELIVERED_PENDING;
+  if (value === 'completed') return DELIVERY_STATUS.COMPLETED;
+  return value.replace(/\s+/g, '_');
+}
+
+function toDeliveryDisplayStatus(status = '') {
+  switch (status) {
+    case DELIVERY_STATUS.OUT_FOR_DELIVERY:
+      return 'Out for Delivery';
+    case DELIVERY_STATUS.DELIVERED_PENDING:
+      return 'Pending confirmation';
+    case DELIVERY_STATUS.COMPLETED:
+      return 'Completed';
+    case DELIVERY_STATUS.PENDING:
+    default:
+      return 'Pending';
+  }
+}
+
+function computeDeliveryStats(list = []) {
+  const stats = { assigned: 0, pending: 0, delivered_pending: 0 };
+  list.forEach((delivery) => {
+    stats.assigned += 1;
+    if (delivery.status === DELIVERY_STATUS.PENDING) stats.pending += 1;
+    if (delivery.status === DELIVERY_STATUS.DELIVERED_PENDING) stats.delivered_pending += 1;
+  });
+  return stats;
 }
 
 function respondCart(req, res, payload) {
