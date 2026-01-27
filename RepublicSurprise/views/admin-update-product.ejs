@@ -211,7 +211,8 @@
         <h1>Update Blind Box Product</h1>
       </section>
 
-      <form class="product-form" action="/admin/update-product<%= productId ? `?id=${productId}` : '' %>" method="post" enctype="multipart/form-data">
+      <form class="product-form" action="/admin/update-product" method="post" enctype="application/x-www-form-urlencoded">
+        <input type="hidden" name="productId" value="<%= productId %>" />
         <% if (!hasProduct) { %>
           <div class="flash info">No product saved yet. Fill the form to create one.</div>
         <% } %>

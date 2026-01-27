@@ -501,16 +501,21 @@
       const normalizeProducts = (list) => {
         return list.map((item, index) => {
           const pickPrice = Number(item.individualPrice || item.setPrice || 0) || 0;
-          const stock = Number(item.individualStock || item.setStock || 0) || 0;
-          const badge = item.enableSet && item.enableIndividual
+          const stockFromContract = Number(item.individualStock || item.setStock || 0) || 0;
+          const explicitPrice = Number(item.price || 0);
+          const explicitStock = Number(item.stock || 0);
+          const badgeContract = item.enableSet && item.enableIndividual
             ? 'Single & Set'
             : item.enableSet
             ? 'Set'
             : 'Single box';
+          const price = explicitPrice > 0 ? explicitPrice : pickPrice;
+          const stock = Number.isFinite(explicitStock) && explicitStock >= 0 ? explicitStock : stockFromContract;
+          const badge = item.badge || badgeContract || 'Single box';
           return {
             id: item.id || `product-${index}`,
-            name: item.productName || 'Mystery figure',
-            price: pickPrice,
+            name: item.productName || item.name || 'Mystery figure',
+            price,
             stock,
             badge,
             image: item.image || fallbackImages[index % fallbackImages.length],

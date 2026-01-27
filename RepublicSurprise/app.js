@@ -1,1469 +1,843 @@
 const express = require('express');
 const path = require('path');
-const session = require('express-session');
-const flash = require('connect-flash');
+const fs = require('fs');
 const multer = require('multer');
-const crypto = require('crypto');
 const { Web3 } = require('web3');
 
+// Express app setup
 const app = express();
-const PORT = 3000;
-
-const users = {}; // simple in-memory user store for demo
-const products = [];
-let lastProductId = null;
-const web3 = new Web3(process.env.WEB3_PROVIDER_URL || 'http://127.0.0.1:7545');
-const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS || '';
-const ADMIN_PRIVATE_KEY = process.env.ADMIN_PRIVATE_KEY || '';
-const CONTRACT_ABI = [
-  {
-    inputs: [
-      { internalType: 'uint256', name: 'id', type: 'uint256' },
-      { internalType: 'string', name: 'name', type: 'string' },
-      { internalType: 'string', name: 'description', type: 'string' },
-      { internalType: 'uint256', name: 'priceWei', type: 'uint256' },
-      { internalType: 'bool', name: 'enableIndividual', type: 'bool' },
-      { internalType: 'bool', name: 'enableSet', type: 'bool' },
-      { internalType: 'uint256', name: 'individualPriceWei', type: 'uint256' },
-      { internalType: 'uint256', name: 'individualStock', type: 'uint256' },
-      { internalType: 'uint256', name: 'setPriceWei', type: 'uint256' },
-      { internalType: 'uint256', name: 'setStock', type: 'uint256' },
-      { internalType: 'uint256', name: 'setBoxes', type: 'uint256' }
-    ],
-    name: 'addProduct',
-    outputs: [],
-    stateMutability: 'nonpayable',
-    type: 'function'
-  },
-  {
-    inputs: [
-      { internalType: 'uint256', name: 'id', type: 'uint256' },
-      { internalType: 'string', name: 'name', type: 'string' },
-      { internalType: 'string', name: 'description', type: 'string' },
-      { internalType: 'uint256', name: 'priceWei', type: 'uint256' },
-      { internalType: 'bool', name: 'enableIndividual', type: 'bool' },
-      { internalType: 'bool', name: 'enableSet', type: 'bool' },
-      { internalType: 'uint256', name: 'individualPriceWei', type: 'uint256' },
-      { internalType: 'uint256', name: 'individualStock', type: 'uint256' },
-      { internalType: 'uint256', name: 'setPriceWei', type: 'uint256' },
-      { internalType: 'uint256', name: 'setStock', type: 'uint256' },
-      { internalType: 'uint256', name: 'setBoxes', type: 'uint256' }
-    ],
-    name: 'updateProduct',
-    outputs: [],
-    stateMutability: 'nonpayable',
-    type: 'function'
-  },
-  {
-    inputs: [
-      { internalType: 'uint256', name: 'id', type: 'uint256' },
-      { internalType: 'string', name: 'action', type: 'string' }
-    ],
-    name: 'logProductAudit',
-    outputs: [],
-    stateMutability: 'nonpayable',
-    type: 'function'
-  },
-  {
-    inputs: [
-      { internalType: 'address', name: 'user', type: 'address' },
-      { internalType: 'string', name: 'action', type: 'string' }
-    ],
-    name: 'logUserAudit',
-    outputs: [],
-    stateMutability: 'nonpayable',
-    type: 'function'
-  }
-];
-let contractInstance = null;
-const getContract = () => {
-  if (!CONTRACT_ADDRESS) return null;
-  if (!contractInstance) {
-    contractInstance = new web3.eth.Contract(CONTRACT_ABI, CONTRACT_ADDRESS);
-  }
-  return contractInstance;
-};
-const getAdminAccount = () => {
-  if (!ADMIN_PRIVATE_KEY) return null;
-  try {
-    const account = web3.eth.accounts.privateKeyToAccount(ADMIN_PRIVATE_KEY);
-    if (!web3.eth.accounts.wallet.get(account.address)) {
-      web3.eth.accounts.wallet.add(account);
-    }
-    return account;
-  } catch {
-    return null;
-  }
-};
-const sendContractTx = async (method) => {
-  const contract = getContract();
-  const account = getAdminAccount();
-  if (!contract || !account || !method) return null;
-  try {
-    const gas = await method.estimateGas({ from: account.address }).catch(() => null);
-    const receipt = await method.send({ from: account.address, gas: gas || undefined });
-    return receipt?.transactionHash || null;
-  } catch {
-    return null;
-  }
-};
-
-const productStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    cb(null, path.join(__dirname, 'public', 'images'));
-  },
-  filename: (_req, file, cb) => {
-    const safeName = (file.originalname || 'upload')
-      .replace(/[^a-zA-Z0-9._-]/g, '_')
-      .slice(0, 80);
-    const unique = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}-${safeName}`;
-    cb(null, unique);
-  }
-});
-
-const uploadProduct = multer({
-  storage: productStorage,
-  limits: { files: 3 },
-  fileFilter: (_req, file, cb) => {
-    if (['image/jpeg', 'image/png'].includes(file.mimetype)) return cb(null, true);
-    return cb(null, false);
-  }
-});
-
-const upload = multer({ storage: multer.memoryStorage(), limits: { files: 3 } });
-
-const normalizeWalletAddress = (address) => (address || '').trim().toLowerCase();
-const normalizeDisplayName = (value) => (value || '').trim().toLowerCase();
-const normalizeContactNumber = (value) => (value || '').replace(/\D/g, '');
-const toUint = (value) => {
-  const parsed = parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
-};
-const toWeiSafe = (value) => {
-  const num = Number(value || 0);
-  if (!Number.isFinite(num) || num <= 0) return '0';
-  return web3.utils.toWei(String(num), 'ether');
-};
-const getChainProductId = (product) => {
-  if (!product) return null;
-  if (Number.isFinite(Number(product.chainId))) return Number(product.chainId);
-  const parsed = Number(product.id);
-  return Number.isFinite(parsed) ? parsed : null;
-};
-const getUserByWallet = (address) => {
-  const key = normalizeWalletAddress(address);
-  if (!key) return null;
-  return users[key] || null;
-};
-const setUserByWallet = (address, data) => {
-  const key = normalizeWalletAddress(address);
-  if (!key) return null;
-  users[key] = data;
-  return key;
-};
-const walletAddressExists = (address) => !!getUserByWallet(address);
-const displayNameExists = (name) => {
-  const normalized = normalizeDisplayName(name);
-  if (!normalized) return false;
-  return Object.values(users).some((user) => normalizeDisplayName(user.name) === normalized);
-};
-const contactNumberExists = (contact) => {
-  const normalized = normalizeContactNumber(contact);
-  if (!normalized) return false;
-  return Object.values(users).some((user) => normalizeContactNumber(user.contact) === normalized);
-};
-
-const getActiveProducts = () => products.filter((item) => item.active !== false);
-
-const productFields = [
-  'productName',
-  'productDescription',
-  'mainImageIndex',
-  'enableIndividual',
-  'enableSet',
-  'individualPrice',
-  'individualStock',
-  'setBoxes',
-  'setPrice',
-  'setStock',
-  'active'
-];
-
-const userFields = ['name', 'walletAddress', 'role', 'address', 'contact', 'active'];
-
-const pickProductFields = (source) =>
-  productFields.reduce((acc, key) => {
-    acc[key] = source && Object.prototype.hasOwnProperty.call(source, key) ? source[key] : '';
-    return acc;
-  }, {});
-
-const pickUserFields = (source) =>
-  userFields.reduce((acc, key) => {
-    acc[key] = source && Object.prototype.hasOwnProperty.call(source, key) ? source[key] : '';
-    return acc;
-  }, {});
-
-const buildAuditEntry = (action, actor, before, after, txHash = '') => {
-  const beforeSnapshot = before ? pickProductFields(before) : null;
-  const afterSnapshot = after ? pickProductFields(after) : null;
-  const changes = [];
-  const timestamp = new Date().toISOString();
-
-  if (beforeSnapshot && afterSnapshot) {
-    productFields.forEach((key) => {
-      if (beforeSnapshot[key] !== afterSnapshot[key]) {
-        changes.push({ field: key, from: beforeSnapshot[key], to: afterSnapshot[key] });
-      }
-    });
-  }
-
-  const snapshot = afterSnapshot || beforeSnapshot;
-  const payload = JSON.stringify({ action, actor: actor || 'system', timestamp, changes, snapshot });
-  const hash = crypto.createHash('sha256').update(payload).digest('hex');
-
-  return {
-    action,
-    actor: actor || 'system',
-    timestamp,
-    changes,
-    snapshot,
-    hash,
-    txHash: txHash || ''
-  };
-};
-
-const buildUserAuditEntry = (action, actor, before, after, txHash = '') => {
-  const beforeSnapshot = before ? pickUserFields(before) : null;
-  const afterSnapshot = after ? pickUserFields(after) : null;
-  const changes = [];
-  const timestamp = new Date().toISOString();
-
-  if (beforeSnapshot && afterSnapshot) {
-    userFields.forEach((key) => {
-      if (beforeSnapshot[key] !== afterSnapshot[key]) {
-        changes.push({ field: key, from: beforeSnapshot[key], to: afterSnapshot[key] });
-      }
-    });
-  }
-
-  const snapshot = afterSnapshot || beforeSnapshot;
-  const payload = JSON.stringify({ action, actor: actor || 'system', timestamp, changes, snapshot });
-  const hash = crypto.createHash('sha256').update(payload).digest('hex');
-
-  return {
-    action,
-    actor: actor || 'system',
-    timestamp,
-    changes,
-    snapshot,
-    hash,
-    txHash: txHash || ''
-  };
-};
-
+const PORT = process.env.PORT || 3001;
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
-
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use(
-  session({
-    secret: 'replace-with-env-secret',
-    resave: false,
-    saveUninitialized: false
-  })
-);
-app.use(flash());
 app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.urlencoded({ extended: false }));
+app.use(express.json());
 
-app.use((req, res, next) => {
-  res.locals.errorMessages = req.flash('error');
-  res.locals.successMessages = req.flash('success');
-  res.locals.user = req.session.user || null;
-  const cart = req.session.cart || [];
-  res.locals.cartCount = cart.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
-  next();
+// Web3 + contract wiring
+const providerUrl = process.env.WEB3_PROVIDER_URL || 'http://127.0.0.1:7545';
+const web3 = new Web3(providerUrl);
+const contractMetaPaths = [
+  path.join(__dirname, '..', 'build', 'contracts', 'RepublicSurpriseContract.json'),
+  path.join(__dirname, 'build', 'contracts', 'RepublicSurpriseContract.json')
+];
+const contractMeta = contractMetaPaths.reduce((acc, candidate) => {
+  if (acc || !fs.existsSync(candidate)) return acc;
+  try {
+    return JSON.parse(fs.readFileSync(candidate, 'utf8'));
+  } catch (_err) {
+    return acc;
+  }
+}, null);
+const contractAbi = contractMeta?.abi || [];
+let contractAddress = process.env.CONTRACT_ADDRESS || '';
+if (!contractAddress && contractMeta?.networks) {
+  const firstNetwork = Object.values(contractMeta.networks)[0];
+  if (firstNetwork?.address) contractAddress = firstNetwork.address;
+}
+
+// Multer storage for uploaded pet images
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, path.join(__dirname, 'public', 'images')),
+  filename: (_req, file, cb) => cb(null, file.originalname)
 });
+const upload = multer({ storage });
 
-const requireLogin = (req, res, next) => {
-  if (!req.session.user) {
-    req.flash('error', 'please log in to view this page');
-    return res.redirect('/login');
-  }
-  next();
-};
+// Global state shared with views
+let account = '';
+let noOfPets = 0;
+let loading = true;
+let addObj = null;
+let addFunc = null;
+let addEnabled = null;
+let listOfPets = [];
+let currentUser = null;
+const users = {};
+const carts = {};
+const products = [
+  seedProduct('lolo', 'Lolo the Piggy', 49.9, 8, 'Set of 3', '/images/lolo_the_piggy.png', 'A cheerful trio of piggy pals.'),
+  seedProduct('pino', 'Pino JoJo', 37.9, 5, 'Single box', '/images/pino_jojo.png', 'Dreamy pastel friend.'),
+  seedProduct('hacibubu', 'Hacibubu', 38.8, 7, 'Limited', '/images/hacibubu.png', 'Limited run surprise.'),
+  seedProduct('hinono', 'Hinono', 61.9, 4, 'Collector set', '/images/hinono.png', 'Collector set of mystical figures.'),
+  seedProduct('zimama', 'Zimama', 37.9, 3, 'Single box', '/images/zimama.png', 'Forest critter guardian.'),
+  seedProduct('sweet-bun', 'Sweet Bun', 20.9, 12, 'Single box', '/images/sweet_bun.png', 'Fluffy friend for cozy nights.')
+];
 
-const requireUserRole = (req, res, next) => {
-  if (!req.session.user) {
-    req.flash('error', 'Please log in to add to cart.');
-    return res.redirect('/login');
-  }
-  if (req.session.user.role !== 'user') {
-    req.flash('error', 'Only customer accounts can add to cart.');
-    return res.redirect('/login');
-  }
-  next();
-};
-
-const allowRoles = (roles) => (req, res, next) => {
-  if (!req.session.user) {
-    req.flash('error', 'please log in to view this page');
-    return res.redirect('/login');
-  }
-  if (!roles.includes(req.session.user.role)) {
-    req.flash('error', 'Access denied for your role.');
-    return res.redirect('/');
-  }
-  next();
-};
-
+// Home page
 app.get('/', (_req, res) => {
-  res.render('home');
+  // Using existing home.ejs view (no index.ejs in project)
+  res.render('home', {
+    acct: account,
+    cnt: noOfPets,
+    pets: listOfPets,
+    status: loading,
+    addObject: JSON.stringify(addObj),
+    addFunction: addFunc,
+    addStatus: addEnabled,
+    user: null, // header.ejs expects a user object; provide null for public home
+    errorMessages: [], // flash placeholders expected by home.ejs
+    successMessages: []
+  });
 });
 
-app.get('/home', (_req, res) => {
+// Registration page (public)
+app.get('/register', (_req, res) => {
+  res.render('registration', {
+    user: null,
+    errorMessages: [],
+    successMessages: []
+  });
+});
+
+// Wallet availability check used by registration/login pages
+app.get('/register/check-wallet', (req, res) => {
+  const wallet = (req.query.walletAddress || '').trim().toLowerCase();
+  res.json({ inUse: !!users[wallet] });
+});
+
+// Handle registration
+app.post('/register', (req, res) => {
+  const { walletAddress, name, role } = req.body;
+  const wallet = (walletAddress || '').trim().toLowerCase();
+  if (!wallet) {
+    return res.status(400).render('registration', {
+      user: null,
+      errorMessages: ['Wallet address is required'],
+      successMessages: []
+    });
+  }
+  if (users[wallet]) {
+    return res.status(400).render('registration', {
+      user: null,
+      errorMessages: ['This wallet is already registered.'],
+      successMessages: []
+    });
+  }
+  users[wallet] = { walletAddress, name: name || 'User', role: role || 'user' };
+  currentUser = users[wallet];
+  res.render('login', {
+    user: null,
+    errorMessages: [],
+    successMessages: ['Registration complete. You can log in now.']
+  });
+});
+
+// Login page (public)
+app.get('/login', (_req, res) => {
+  res.render('login', {
+    user: null,
+    errorMessages: [],
+    successMessages: []
+  });
+});
+
+// Handle login by wallet
+app.post('/login', (req, res) => {
+  const wallet = (req.body.walletAddress || '').trim().toLowerCase();
+  const found = users[wallet];
+  if (!found) {
+    return res.status(401).render('login', {
+      user: null,
+      errorMessages: ['Wallet not registered. Please register first.'],
+      successMessages: []
+    });
+  }
+  currentUser = found;
+  if (currentUser.role === 'admin') {
+    return res.redirect('/admin/dashboard');
+  }
+  res.redirect('/user/home');
+});
+
+app.post('/logout', (_req, res) => {
+  currentUser = null;
   res.redirect('/');
 });
 
-app.get('/user/home', allowRoles(['user']), (req, res) => {
-  res.render('user-home');
-});
-
-app.get('/user/profile', allowRoles(['user']), (req, res) => {
-  const walletAddress = req.session.user?.walletAddress || '';
-  const user = getUserByWallet(walletAddress);
-  if (!user) {
-    req.flash('error', 'User profile not found. Please log in again.');
-    return res.redirect('/login');
-  }
-  res.render('user-profile', { user });
-});
-
-app.post('/user/profile', allowRoles(['user']), (req, res) => {
-  const walletAddress = req.session.user?.walletAddress || '';
-  const userKey = normalizeWalletAddress(walletAddress);
-  const user = userKey ? users[userKey] : null;
-  if (!user) {
-    req.flash('error', 'User profile not found. Please log in again.');
-    return res.redirect('/login');
-  }
-  const { name, address, contact } = req.body;
-  const errors = [];
-  if (!name) errors.push('Name is required.');
-  if (!address) errors.push('Address is required.');
-  if (!contact) errors.push('Contact number is required.');
-
-  if (errors.length) {
-    errors.forEach((msg) => req.flash('error', msg));
-    return res.redirect('/user/profile');
-  }
-
-  const updated = {
-    ...user,
-    name,
-    address,
-    contact
-  };
-  const entry = buildUserAuditEntry('updated', req.session.user?.walletAddress, user, updated);
-  updated.history = [...(user.history || []), entry];
-  users[userKey] = updated;
-  req.flash('success', 'Profile updated. Redirecting to product listings.');
-  return res.redirect('/shopping');
-});
-
-app.get('/register', (_req, res) => {
-  res.render('registration');
-});
-
-app.post('/register', (req, res) => {
-  const { name, walletAddress, address, contact, role } = req.body;
-  const walletAddressRaw = (walletAddress || '').trim();
-  const errors = [];
-  if (!name) errors.push('Name is required.');
-  if (!walletAddressRaw) errors.push('Wallet address is required.');
-  if (!address) errors.push('Address is required.');
-  if (!contact) errors.push('Contact number is required.');
-  if (!role) errors.push('Role is required.');
-  const allowedRoles = ['user', 'admin', 'delivery man'];
-  if (role && !allowedRoles.includes(role)) errors.push('Invalid role selected.');
-  if (walletAddressRaw && walletAddressExists(walletAddressRaw)) errors.push('Wallet address already exists.');
-  if (name && displayNameExists(name)) errors.push('Full name already exists. Please use another name.');
-  if (contact && contactNumberExists(contact)) errors.push('Contact number already exists. Please use a different number.');
-
-  if (errors.length) {
-    errors.forEach((msg) => req.flash('error', msg));
-    return res.redirect('/register');
-  }
-
-  const newUser = {
-    name,
-    walletAddress: walletAddressRaw,
-    address,
-    contact,
-    role,
-    active: true,
-    createdAt: new Date().toISOString(),
-    history: []
-  };
-  newUser.history.push(buildUserAuditEntry('created', walletAddressRaw, null, newUser));
-  setUserByWallet(walletAddressRaw, newUser);
-  req.session.user = { walletAddress: walletAddressRaw, role };
-  req.flash('success', 'Registration successful.');
-  if (role === 'admin') return res.redirect('/admin/dashboard');
-  if (role === 'delivery man') return res.redirect('/delivery/dashboard');
-  return res.redirect('/user/home');
-});
-
-app.get('/register/check-wallet', (req, res) => {
-  const walletAddress = (req.query.walletAddress || '').trim();
-  if (!walletAddress) {
-    return res.status(400).json({ error: 'Wallet address is required.' });
-  }
-  return res.json({ inUse: walletAddressExists(walletAddress) });
-});
-
-app.get('/login', (_req, res) => {
-  res.render('login');
-});
-
-app.post('/logout', (req, res) => {
-  req.session.destroy(() => {
-    res.redirect('/login');
+// Minimal user home route
+app.get('/user/home', (_req, res) => {
+  if (!currentUser) return res.redirect('/login');
+  res.render('user-home', {
+    user: currentUser,
+    errorMessages: [],
+    successMessages: []
   });
 });
 
-app.post('/login', (req, res) => {
-  const { walletAddress } = req.body;
-  const walletAddressRaw = (walletAddress || '').trim();
-  if (!walletAddressRaw) {
-    req.flash('error', 'Wallet address is required.');
-    return res.redirect('/login');
-  }
-
-  const user = getUserByWallet(walletAddressRaw);
-  if (!user) {
-    req.flash('error', 'Wallet address not found.');
-    return res.redirect('/login');
-  }
-  if (user.active === false) {
-    req.flash('error', 'This account is deactivated. Please contact support.');
-    return res.redirect('/login');
-  }
-
-  req.session.user = { walletAddress: user.walletAddress, role: user.role };
-  req.flash('success', 'Logged in successfully.');
-  if (user.role === 'admin') return res.redirect('/admin/dashboard');
-  if (user.role === 'delivery man') return res.redirect('/delivery/dashboard');
-  return res.redirect('/user/home');
-});
-
-app.get('/admin/dashboard', allowRoles(['admin']), (req, res) => {
-  res.render('admin-home');
-});
-app.get('/admin/orders', allowRoles(['admin']), (_req, res) => {
-  const driversByWallet = Object.values(users).reduce((acc, user) => {
-    const key = normalizeWalletAddress(user.walletAddress);
-    if (key) acc[key] = user;
-    return acc;
-  }, {});
-  res.render('admin-orders', { orders, deliveries, drivers: driversByWallet });
-});
-
-app.get('/admin/orders/:id', allowRoles(['admin']), (req, res) => {
-  const order = orders.find((o) => o.id === req.params.id) || null;
-  if (!order) {
-    req.flash('error', 'Order not found.');
-    return res.redirect('/admin/orders');
-  }
-  res.render('admin-order-detail', { order });
-});
-
-app.get('/admin/orders/check/:id', allowRoles(['admin']), (req, res) => {
-  const order = orders.find((o) => o.id === req.params.id) || null;
-  if (!order) {
-    req.flash('error', 'Order not found.');
-    return res.redirect('/admin/orders');
-  }
-  const delivery = deliveries.find((d) => d.orderNumber === order.id || d.id === order.id || d.deliveryId === order.id) || null;
-  res.render('admin-order-completion-check', { order, delivery });
-});
-
-app.post('/admin/orders/confirm/:id', allowRoles(['admin']), (req, res) => {
-  const target = orders.find((o) => o.id === req.params.id);
-  if (target) {
-    if (target.status === 'Pending Delivery Confirmation') {
-      const linkedDelivery = deliveries.find((d) => d.orderNumber === target.id || d.id === target.id || d.deliveryId === target.id);
-      if (!linkedDelivery || !linkedDelivery.proofImage) {
-        req.flash('error', 'Proof image missing. Please review submission before confirming.');
-        return res.redirect(`/admin/orders/check/${target.id}`);
-      }
-      target.status = 'Completed';
-      req.flash('success', `Order ${target.id} marked completed.`);
-      if (linkedDelivery) linkedDelivery.status = 'Completed';
-    } else {
-      req.flash('error', 'This order cannot be confirmed in its current status.');
-    }
-  } else {
-    req.flash('error', 'Order not found.');
-  }
-  res.redirect('/admin/orders');
-});
-
-app.get('/admin/users', allowRoles(['admin']), (_req, res) => {
-  const list = Object.values(users).map((u, index) => ({
-    idx: index + 1,
-    name: u.name,
-    walletAddress: u.walletAddress,
-    role: u.role,
-    address: u.address,
-    contact: u.contact,
-    active: u.active !== false,
-    historyCount: (u.history || []).length
-  }));
-  res.render('admin-users', { users: list });
-});
-
-app.get('/admin/users/history/:walletAddress', allowRoles(['admin']), (req, res) => {
-  const walletAddress = req.params.walletAddress;
-  const user = getUserByWallet(walletAddress);
-  if (!user) {
-    req.flash('error', 'User not found.');
-    return res.redirect('/admin/users');
-  }
-  const history = user.history || [];
-  res.render('admin-user-history', { user, history });
-});
-
-app.get('/admin/users/edit/:walletAddress', allowRoles(['admin']), (req, res) => {
-  const walletAddress = req.params.walletAddress;
-  const user = getUserByWallet(walletAddress);
-  if (!user) {
-    req.flash('error', 'User not found.');
-    return res.redirect('/admin/users');
-  }
-  res.render('admin-user-edit', { user });
-});
-
-app.post('/admin/users/edit/:walletAddress', allowRoles(['admin']), async (req, res) => {
-  const targetWallet = req.params.walletAddress;
-  const targetKey = normalizeWalletAddress(targetWallet);
-  const user = targetKey ? users[targetKey] : null;
-  if (!user) {
-    req.flash('error', 'User not found.');
-    return res.redirect('/admin/users');
-  }
-  const { name, walletAddress, role, address, contact } = req.body;
-  const errors = [];
-  const allowedRoles = ['user', 'admin', 'delivery man'];
-  if (!role || !allowedRoles.includes(role)) errors.push('Role is required.');
-  if (name && name !== user.name) {
-    errors.push('Name can only be edited by the user.');
-  }
-  if (walletAddress && walletAddress !== targetWallet) {
-    errors.push('Wallet address cannot be changed.');
-  }
-  if (address && address !== user.address) {
-    errors.push('Address can only be edited by the user.');
-  }
-  if (contact && contact !== user.contact) {
-    errors.push('Contact number can only be edited by the user.');
-  }
-
-  if (errors.length) {
-    errors.forEach((msg) => req.flash('error', msg));
-    return res.redirect(`/admin/users/edit/${encodeURIComponent(targetWallet)}`);
-  }
-
-  const updated = {
-    ...user,
-    walletAddress: targetWallet,
-    role
-  };
-  let txHash = '';
-  const method = getContract()?.methods.logUserAudit(targetWallet, 'UPDATE_ROLE');
-  txHash = (await sendContractTx(method)) || '';
-  const entry = buildUserAuditEntry('updated', req.session.user?.walletAddress, user, updated, txHash);
-  updated.history = [...(user.history || []), entry];
-
-  users[targetKey] = updated;
-
-  req.flash('success', 'User role updated.');
-  res.redirect('/admin/users');
-});
-
-app.post('/admin/deactivate-user/:walletAddress', allowRoles(['admin']), (req, res) => {
-  const walletAddress = req.params.walletAddress;
-  const userKey = normalizeWalletAddress(walletAddress);
-  const user = userKey ? users[userKey] : null;
-  if (!user) {
-    req.flash('error', 'User not found.');
-    return res.redirect('/admin/users');
-  }
-  if (user.active === false) {
-    req.flash('error', 'User already deactivated.');
-    return res.redirect('/admin/users');
-  }
-  const updated = { ...user, active: false };
-  const entry = buildUserAuditEntry('deactivated', req.session.user?.walletAddress, user, updated);
-  updated.history = [...(user.history || []), entry];
-  users[userKey] = updated;
-  req.flash('success', 'User deactivated.');
-  res.redirect('/admin/users');
-});
-
-app.post('/admin/reactivate-user/:walletAddress', allowRoles(['admin']), (req, res) => {
-  const walletAddress = req.params.walletAddress;
-  const userKey = normalizeWalletAddress(walletAddress);
-  const user = userKey ? users[userKey] : null;
-  if (!user) {
-    req.flash('error', 'User not found.');
-    return res.redirect('/admin/users');
-  }
-  if (user.active !== false) {
-    req.flash('error', 'User already active.');
-    return res.redirect('/admin/users');
-  }
-  const updated = { ...user, active: true };
-  const entry = buildUserAuditEntry('reactivated', req.session.user?.walletAddress, user, updated);
-  updated.history = [...(user.history || []), entry];
-  users[userKey] = updated;
-  req.flash('success', 'User reactivated.');
-  res.redirect('/admin/users');
-});
-
-app.get('/admin/customer-service', allowRoles(['admin']), (_req, res) => {
-  res.render('admin-customer-service', { tickets: refundTickets });
-});
-
-app.get('/admin/customer-service/:id', allowRoles(['admin']), (req, res) => {
-  const ticket = refundTickets.find((t) => t.id === req.params.id) || null;
-  if (!ticket) {
-    req.flash('error', 'Refund ticket not found.');
-    return res.redirect('/admin/customer-service');
-  }
-  res.render('admin-refund-detail', { ticket });
-});
-
-app.get('/admin/customer-service/approve/:id', allowRoles(['admin']), (req, res) => {
-  const ticket = refundTickets.find((t) => t.id === req.params.id) || null;
-  if (!ticket) {
-    req.flash('error', 'Refund ticket not found.');
-    return res.redirect('/admin/customer-service');
-  }
-  res.render('admin-refund-approve', { ticket });
-});
-
-app.post('/admin/customer-service/approve/:id', allowRoles(['admin']), (req, res) => {
-  const ticket = refundTickets.find((t) => t.id === req.params.id);
-  if (!ticket) {
-    req.flash('error', 'Refund ticket not found.');
-    return res.redirect('/admin/customer-service');
-  }
-  const { refundType, requestNewItem } = req.body;
-  ticket.type = refundType || ticket.type || 'Pending';
-  ticket.status = 'Approved';
-  if (refundType === 'Partial' && requestNewItem) {
-    const newDeliveryId = 'DEL-' + Date.now().toString().slice(-5);
-    deliveries.push({
-      id: newDeliveryId,
-      deliveryId: newDeliveryId,
-      orderNumber: ticket.orderId,
-      customer: ticket.customer,
-      status: 'Pending',
-      proofImage: null,
-      address: ticket.address || '',
-      contact: ticket.contact || ''
-    });
-  }
-  req.flash('success', `Refund ${ticket.id} approved.`);
-  res.redirect('/admin/customer-service');
-});
-//gul
-const deliveries = [
-  { id: 'DEL-001', deliveryId: 'DEL-001', orderNumber: 'ORD-1001', customer: '0xA1b2c3D4e5F678901234567890abcdef12345678', status: 'Out for Delivery', proofImage: null },
-  { id: 'DEL-002', deliveryId: 'DEL-002', orderNumber: 'ORD-1002', customer: '0xB2c3D4e5F678901234567890abcdef1234567890', status: 'Pending', proofImage: null },
-  { id: 'DEL-003', deliveryId: 'DEL-003', orderNumber: 'ORD-1003', customer: '0xC3d4E5f678901234567890abcdef1234567890Ab', status: 'Completed', proofImage: null },
-  // Sample entry for local testing: Order ID 1023 assigned to demo delivery man
-  { id: 'DEL-1023', deliveryId: 'DEL-1023', orderNumber: '1023', customerName: 'John Tan', address: '12 Orchard Road', status: 'out_for_delivery', assignedTo: '0x9a966d7e74B87279448E82b4652c4b7012ba2feE', proofImage: null }
-];
-
-// Add a demo delivery-man user so you can log in locally with wallet '0x9a966d7e74B87279448E82b4652c4b7012ba2feE'
-users[normalizeWalletAddress('0x9a966d7e74B87279448E82b4652c4b7012ba2feE')] = {
-  name: 'Demo Driver 9A',
-  walletAddress: '0x9a966d7e74B87279448E82b4652c4b7012ba2feE',
-  role: 'delivery man',
-  address: 'Depot',
-  contact: '0000',
-  active: true,
-  createdAt: new Date().toISOString(),
-  history: []
-};
-
-const orders = [
-  { id: 'ORD-1001', product: 'Mystery Box A', customer: '0xA1b2c3D4e5F678901234567890abcdef12345678', price: 49.9, qty: 2, status: 'Pending Delivery Confirmation' },
-  { id: 'ORD-1002', product: 'Mystery Box B', customer: '0xB2c3D4e5F678901234567890abcdef1234567890', price: 59.9, qty: 1, status: 'Pending Delivery Confirmation' },
-  { id: 'ORD-1003', product: 'Mystery Box C', customer: '0xC3d4E5f678901234567890abcdef1234567890Ab', price: 39.9, qty: 3, status: 'Confirmed' }
-];
-
-const refundTickets = [
-  { id: 'RF-2001', customer: '0xD4e5F678901234567890abcdef1234567890AbCd', orderId: 'ORD-0999', amount: 29.9, type: 'Partial', status: 'Open' },
-  { id: 'RF-2002', customer: '0xE5f678901234567890abcdef1234567890AbCdE', orderId: 'ORD-0998', amount: 59.9, type: 'Full', status: 'In Review' }
-];
-
-
-
-// (delivery dashboard implemented later with deliveryName/stats/filters)
-
-// Create a delivery record (called from payment page after successful payment)
-// Create a delivery record (called from payment page after successful payment)
-app.post('/create-delivery', (req, res) => {
-  const { orderId, customerName: bodyName, address: bodyAddress, customerWallet, contact: bodyContact } = req.body || {};
-  if (!orderId) return res.status(400).json({ error: 'orderId is required' });
-  const newId = 'DEL-' + Date.now().toString().slice(-6);
-  // Prefer explicit name/address from request; otherwise try to resolve from wallet
-  let customerName = bodyName || 'Guest';
-  let address = bodyAddress || '';
-  let contact = bodyContact || '';
-  if ((!bodyName || !bodyName.length || !bodyAddress) && customerWallet) {
-    const user = getUserByWallet(customerWallet);
-    if (user) {
-      customerName = user.name || customerWallet;
-      address = user.address || address;
-      contact = user.contact || contact;
-    }
-  }
-  if ((!bodyName || !bodyName.length) && customerWallet) {
-    const user = getUserByWallet(customerWallet);
-    if (user) {
-      customerName = user.name || customerWallet;
-      address = user.address || '';
-      contact = user.contact || '';
-    } else {
-      customerName = customerWallet;
-    }
-  }
-  const entry = {
-    id: newId,
-    deliveryId: newId,
-    orderNumber: orderId,
-    customerName,
-    address,
-    contact,
-    customerWallet: customerWallet || '',
-    status: 'pending',
-    assignedTo: null,
-    assignedAt: null,
-    proofImage: null
-  };
-  deliveries.push(entry);
-  return res.json({ success: true, delivery: entry });
-});
-
-app.post('/create-order', (req, res) => {
-  const { orderId, customerWallet, customerName: bodyName, contact: bodyContact, address: bodyAddress, product, price, qty, status } = req.body || {};
-  if (!orderId) {
-    return res.status(400).json({ error: 'orderId is required' });
-  }
-  const existing = orders.find((o) => o.id === orderId || o.orderId === orderId);
-  if (existing) {
-    req.session.cart = [];
-    return res.json({ success: true, order: existing });
-  }
-  let customerName = bodyName;
-  let contact = bodyContact;
-  let address = bodyAddress;
-  if (customerWallet) {
-    const user = getUserByWallet(customerWallet);
-    if (user) {
-      customerName = customerName || user.name || customerWallet;
-      contact = contact || user.contact || '';
-      address = address || user.address || '';
-    }
-  }
-  const entry = {
-    id: orderId,
-    product: product || 'Mystery order',
-    customer: customerWallet || customerName || 'Guest',
-    customerWallet: customerWallet || '',
-    customerName: customerName || customerWallet || 'Guest',
-    contact: contact || '',
-    address: address || '',
-    price: Number(price) || 0,
-    qty: Number(qty) || 1,
-    status: status || 'Pending Delivery Confirmation',
-    createdAt: new Date().toISOString()
-  };
-  orders.push(entry);
-  req.session.cart = [];
-  return res.json({ success: true, order: entry });
-});
-
-// Alias to the delivery dashboard
-app.get('/delivery-home', allowRoles(['delivery man']), (req, res) => {
-  return res.redirect('/delivery/dashboard');
-});
-
-// Delivery dashboard: show deliveries assigned to logged-in delivery man with stats and filters
-app.get('/delivery/dashboard', allowRoles(['delivery man']), (req, res) => {
-  const wallet = req.session.user?.walletAddress;
-  const user = getUserByWallet(wallet);
-  const deliveryName = (user && user.name) ? user.name : (wallet || 'Delivery User');
-
-  const normalizedWallet = normalizeWalletAddress(wallet);
-  const assignedList = deliveries.filter((d) => normalizeWalletAddress(d.assignedTo) === normalizedWallet);
-  const pendingList = deliveries.filter((d) => !d.assignedTo && d.status === 'pending');
-
-  const stats = {
-    assigned: assignedList.filter((d) => ['assigned', 'out_for_delivery'].includes(String(d.status).toLowerCase())).length,
-    pending: pendingList.length,
-    delivered_pending: assignedList.filter((d) => String(d.status).toLowerCase() === 'delivered_pending').length
-  };
-
-  let list = [...assignedList];
-  const q = (req.query.q || '').toLowerCase().trim();
-  const statusFilter = (req.query.status || '').toLowerCase();
-  if (statusFilter) list = list.filter((d) => String(d.status || '').toLowerCase() === statusFilter);
-  if (q) {
-    list = list.filter((d) => {
-      const customer = String(d.customerName || d.customer || '').toLowerCase();
-      const addr = String(d.address || '').toLowerCase();
-      const order = String(d.orderNumber || '').toLowerCase();
-      return customer.includes(q) || addr.includes(q) || order.includes(q);
-    });
-  }
-
-  const viewDeliveries = list.map((d) => ({
-    id: d.id,
-    deliveryId: d.deliveryId || d.id,
-    orderNumber: d.orderNumber,
-    address: d.address || '',
-    status: d.status || '',
-    customerName: d.customerName || d.customer || '',
-    customerWallet: d.customerWallet || d.customer || '',
-    contact: d.contact || '',
-    items: d.items || []
-  }));
-
-  const viewPending = pendingList.map((d) => ({
-    id: d.id,
-    deliveryId: d.deliveryId || d.id,
-    orderNumber: d.orderNumber,
-    address: d.address || '',
-    customerName: d.customerName || d.customer || '',
-    customerWallet: d.customerWallet || d.customer || '',
-    contact: d.contact || ''
-  }));
-
-  res.render('delivery-home', { deliveries: viewDeliveries, pendingDeliveries: viewPending, deliveryName, stats });
-});
-
-// Assign a pending delivery to the current delivery user
-app.post('/deliveries/:id/assign', allowRoles(['delivery man']), (req, res) => {
-  const id = req.params.id;
-  const target = deliveries.find((d) => d.id === id || d.deliveryId === id);
-  if (!target) {
-    req.flash('error', 'Delivery not found.');
-    return res.redirect('/delivery-home');
-  }
-  if (target.status !== 'Pending') {
-    req.flash('error', 'Delivery is not pending and cannot be assigned.');
-    return res.redirect('/delivery-home');
-  }
-  target.status = 'Assigned';
-  target.assignedTo = req.session.user?.walletAddress || 'unknown';
-  target.assignedAt = new Date().toISOString();
-  req.flash('success', `Delivery ${target.id} assigned to you.`);
-  return res.redirect('/delivery-home');
-});
-
-app.get('/delivery/order/:id', allowRoles(['delivery man', 'admin']), (req, res) => {
-  const delivery = deliveries.find((d) => d.id === req.params.id || d.deliveryId === req.params.id) || null;
-  if (!delivery) {
-    req.flash('error', 'Order not found.');
-    return res.redirect('/delivery/dashboard');
-  }
-  res.render('delivery-order-detail', { delivery });
-});
-
-// Delivery detail view with permission check: delivery man can only view their assigned deliveries
-app.get('/deliveries/:id', allowRoles(['delivery man', 'admin']), (req, res) => {
-  const id = req.params.id;
-  const delivery = deliveries.find((d) => d.id === id || d.deliveryId === id) || null;
-  if (!delivery) {
-    req.flash('error', 'Delivery not found.');
-    return res.redirect('/delivery/dashboard');
-  }
-  if (req.session.user.role === 'delivery man') {
-    const wallet = req.session.user?.walletAddress;
-    if (delivery.assignedTo !== wallet) {
-      req.flash('error', 'Access denied. This delivery is not assigned to you.');
-      return res.redirect('/delivery/dashboard');
-    }
-  }
-  res.render('delivery-order-detail', { delivery });
-});
-
-app.post('/deliveries/:id/claim', allowRoles(['delivery man']), (req, res) => {
-  const id = req.params.id;
-  const delivery = deliveries.find((d) => d.id === id || d.deliveryId === id) || null;
-  if (!delivery || delivery.assignedTo) {
-    req.flash('error', 'Delivery not found or already assigned.');
-    return res.redirect('/delivery/dashboard');
-  }
-  const wallet = req.session.user?.walletAddress;
-  delivery.assignedTo = normalizeWalletAddress(wallet);
-  delivery.assignedAt = new Date().toISOString();
-  delivery.status = 'out_for_delivery';
-  req.flash('success', `Delivery ${delivery.deliveryId || delivery.id} assigned to you.`);
-  res.redirect('/delivery/dashboard');
-});
-
-// Submit proof of delivery (photo + remarks + optional signature)
-app.post('/deliveries/:id/submit-proof', allowRoles(['delivery man']), upload.single('proofImage'), (req, res) => {
-  const id = req.params.id;
-  const delivery = deliveries.find((d) => d.id === id || d.deliveryId === id) || null;
-  if (!delivery) {
-    req.flash('error', 'Delivery not found.');
-    return res.redirect('/delivery/dashboard');
-  }
-  const wallet = req.session.user?.walletAddress;
-  if (delivery.assignedTo !== wallet) {
-    req.flash('error', 'Access denied. This delivery is not assigned to you.');
-    return res.redirect('/delivery/dashboard');
-  }
-
-  // Accept file and store as base64 for demo
-  if (req.file && req.file.buffer) {
-    const b64 = req.file.buffer.toString('base64');
-    delivery.proofImage = { data: b64, mimetype: req.file.mimetype, filename: req.file.originalname };
-  }
-  delivery.remarks = req.body.remarks || '';
-  delivery.signature = req.body.signature || '';
-  delivery.status = 'delivered_pending';
-  delivery.deliveredAt = new Date().toISOString();
-
-  req.flash('success', 'Proof submitted. Awaiting admin confirmation.');
-  return res.redirect('/delivery/dashboard');
-});
-
-// Delivery history for logged-in delivery man
-app.get('/delivery-history', allowRoles(['delivery man']), (req, res) => {
-  const wallet = req.session.user?.walletAddress;
-  const user = getUserByWallet(wallet);
-  const deliveryName = (user && user.name) ? user.name : (wallet || 'Delivery User');
-  const history = deliveries.filter((d) => d.assignedTo === wallet && (d.status === 'delivered_pending' || d.status === 'completed'))
-    .map((d) => ({ id: d.id, orderNumber: d.orderNumber, customerName: d.customerName || d.customer || '', status: d.status, proofImage: d.proofImage || null, remarks: d.remarks || '' }));
-  res.render('delivery-history', { history, deliveryName });
-});
-
-// Admin-friendly alias to view delivery details without hitting the delivery dashboard redirect.
-app.get('/admin/delivery/:id', allowRoles(['admin']), (req, res) => {
-  const delivery = deliveries.find((d) => d.id === req.params.id || d.deliveryId === req.params.id) || null;
-  if (!delivery) {
-    req.flash('error', 'Order not found.');
-    return res.redirect('/admin/orders');
-  }
-  res.render('delivery-order-detail', { delivery });
-});
-
-const hasApprovedRefund = (orderId) =>
-  refundTickets.some((ticket) => ticket.orderId === orderId && ticket.status === 'Approved');
-
-
-app.get('/admin/add-product', allowRoles(['admin']), (req, res) => {
-  res.render('admin-add-product');
-});
-
-const getProductImages = (files = []) =>
-  files
-    .filter((file) => ['image/jpeg', 'image/png'].includes(file.mimetype))
-    .map((file) => `/images/${file.filename}`);
-
-const buildProductPayload = (body, files = []) => {
-  const payload = {
-    productName: body.productName || '',
-    productDescription: body.productDescription || '',
-    mainImageIndex: body.mainImageIndex || '1',
-    enableIndividual: !!body.enableIndividual,
-    enableSet: !!body.enableSet,
-    individualPrice: body.individualPrice || '',
-    individualStock: body.individualStock || '',
-    setBoxes: body.setBoxes || '',
-    setPrice: body.setPrice || '',
-    setStock: body.setStock || ''
-  };
-  const images = getProductImages(files);
-  const mainIndex = Math.max(parseInt(payload.mainImageIndex, 10) - 1, 0);
-  const image = images[mainIndex] || images[0] || '';
-  return { ...payload, images, image };
-};
-
-const createProduct = (body, files = []) => {
-  const now = Date.now();
-  return {
-    id: now.toString(36) + Math.random().toString(36).slice(2, 7),
-    chainId: now,
-    createdAt: new Date(),
-    ...buildProductPayload(body, files),
-    active: true,
-    history: []
-  };
-};
-
-const validateProductPayload = (body, files) => {
-  const errors = [];
-  const enableIndividual = !!body.enableIndividual;
-  const enableSet = !!body.enableSet;
-
-  if (!files || files.length < 1) errors.push('At least 1 product image is required.');
-  if (!body.productName) errors.push('Product name is required.');
-  if (!body.productDescription) errors.push('Product description is required.');
-  if (!enableIndividual && !enableSet) errors.push('Select at least one blind box purchase type.');
-
-  if (enableIndividual) {
-    if (!body.individualPrice) errors.push('Price per box is required.');
-    if (!body.individualStock) errors.push('Individual stock quantity is required.');
-  }
-
-  if (enableSet) {
-    if (!body.setBoxes) errors.push('Number of boxes per set is required.');
-    if (!body.setPrice) errors.push('Set price is required.');
-    if (!body.setStock) errors.push('Set stock quantity is required.');
-  }
-
-  return errors;
-};
-
-const getCart = (req) => {
-  if (!req.session.cart) req.session.cart = [];
-  return req.session.cart;
-};
-
-const sanitizeCartItem = (body) => {
-  const id = (body.id || '').toString();
-  const name = (body.name || '').toString().trim();
-  const price = Number(body.price || 0) || 0;
-  const qty = Math.max(parseInt(body.qty, 10) || 1, 1);
-  return { id, name, price, qty };
-};
-
-const calcCartTotals = (cart) => {
-  const subtotal = cart.reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.qty) || 0), 0);
-  const shipping = subtotal > 0 ? 6.9 : 0;
-  const total = subtotal + shipping;
-  return { subtotal, shipping, total };
-};
-
-app.post('/admin/add-product', allowRoles(['admin']), uploadProduct.array('images', 3), async (req, res) => {
-  const errors = validateProductPayload(req.body, req.files);
-  if (errors.length) {
-    errors.forEach((msg) => req.flash('error', msg));
-    return res.redirect('/admin/add-product');
-  }
-  const newProduct = createProduct(req.body, req.files);
-  let txHash = '';
-  const chainId = getChainProductId(newProduct);
-  if (chainId !== null) {
-    const method = getContract()?.methods.addProduct(
-      chainId,
-      newProduct.productName,
-      newProduct.productDescription,
-      toWeiSafe(newProduct.individualPrice || newProduct.setPrice || 0),
-      !!newProduct.enableIndividual,
-      !!newProduct.enableSet,
-      toWeiSafe(newProduct.individualPrice || 0),
-      toUint(newProduct.individualStock),
-      toWeiSafe(newProduct.setPrice || 0),
-      toUint(newProduct.setStock),
-      toUint(newProduct.setBoxes)
-    );
-    txHash = (await sendContractTx(method)) || '';
-  }
-  newProduct.history.push(buildAuditEntry('created', req.session.user?.walletAddress, null, newProduct, txHash));
-  products.push(newProduct);
-  lastProductId = newProduct.id;
-  req.flash('success', 'Product saved.');
-  res.redirect('/admin/add-product');
-});
-
-app.get('/admin/update-product', allowRoles(['admin']), (req, res) => {
-  const targetId = req.query.id || lastProductId;
-  const product = products.find((item) => item.id === targetId) || buildProductPayload({});
-  res.render('admin-update-product', { product, hasProduct: products.length > 0, productId: targetId || '' });
-});
-
-app.post('/admin/update-product', allowRoles(['admin']), uploadProduct.array('images', 3), async (req, res) => {
-  const targetId = req.query.id || lastProductId;
-  const errors = validateProductPayload(req.body, req.files);
-  if (errors.length) {
-    errors.forEach((msg) => req.flash('error', msg));
-    return res.redirect(`/admin/update-product${targetId ? `?id=${targetId}` : ''}`);
-  }
-  const nextPayload = buildProductPayload(req.body, req.files);
-  const existingIndex = products.findIndex((item) => item.id === targetId);
-  if (existingIndex >= 0) {
-    const before = products[existingIndex];
-    const updated = { ...before, ...nextPayload, active: before.active !== false };
-    let txHash = '';
-    const chainId = getChainProductId(updated);
-    if (chainId !== null) {
-      const method = getContract()?.methods.updateProduct(
-        chainId,
-        updated.productName,
-        updated.productDescription,
-        toWeiSafe(updated.individualPrice || updated.setPrice || 0),
-        !!updated.enableIndividual,
-        !!updated.enableSet,
-        toWeiSafe(updated.individualPrice || 0),
-        toUint(updated.individualStock),
-        toWeiSafe(updated.setPrice || 0),
-        toUint(updated.setStock),
-        toUint(updated.setBoxes)
-      );
-      txHash = (await sendContractTx(method)) || '';
-    }
-    const entry = buildAuditEntry('updated', req.session.user?.walletAddress, before, updated, txHash);
-    updated.history = [...(before.history || []), entry];
-    products[existingIndex] = updated;
-    lastProductId = products[existingIndex].id;
-  } else {
-    const created = createProduct(req.body, req.files);
-    let txHash = '';
-    const chainId = getChainProductId(created);
-    if (chainId !== null) {
-      const method = getContract()?.methods.addProduct(
-        chainId,
-        created.productName,
-        created.productDescription,
-        toWeiSafe(created.individualPrice || created.setPrice || 0),
-        !!created.enableIndividual,
-        !!created.enableSet,
-        toWeiSafe(created.individualPrice || 0),
-        toUint(created.individualStock),
-        toWeiSafe(created.setPrice || 0),
-        toUint(created.setStock),
-        toUint(created.setBoxes)
-      );
-      txHash = (await sendContractTx(method)) || '';
-    }
-    created.history.push(buildAuditEntry('created', req.session.user?.walletAddress, null, created, txHash));
-    products.push(created);
-    lastProductId = created.id;
-  }
-  req.flash('success', 'Product updated.');
-  res.redirect(`/admin/update-product${targetId ? `?id=${targetId}` : ''}`);
-});
-
-app.get('/admin/inventory', allowRoles(['admin']), (req, res) => {
-  res.render('admin-inventory', { products });
-});
-
-app.get('/admin/product/:id', allowRoles(['admin']), (req, res) => {
-  const { id } = req.params;
-  const product = products.find((item) => item.id === id) || null;
-  if (!product) {
-    req.flash('error', 'Product not found.');
-    return res.redirect('/admin/inventory');
-  }
-  const history = product.history || [];
-  res.render('admin-product-history', { product, history });
-});
-
-app.post('/admin/deactivate-product/:id', allowRoles(['admin']), (req, res) => {
-  const { id } = req.params;
-  const index = products.findIndex((item) => item.id === id);
-  if (index >= 0) {
-    const before = products[index];
-    if (before.active === false) {
-      req.flash('error', 'Product already deactivated.');
-      return res.redirect('/admin/inventory');
-    }
-    const updated = { ...before, active: false };
-    const entry = buildAuditEntry('deactivated', req.session.user?.walletAddress, before, updated);
-    updated.history = [...(before.history || []), entry];
-    products[index] = updated;
-    if (lastProductId === id) lastProductId = products[index].id;
-    req.flash('success', 'Product deactivated.');
-  } else {
-    req.flash('error', 'Product not found.');
-  }
-  res.redirect('/admin/inventory');
-});
-
-app.post('/admin/reactivate-product/:id', allowRoles(['admin']), (req, res) => {
-  const { id } = req.params;
-  const index = products.findIndex((item) => item.id === id);
-  if (index >= 0) {
-    const before = products[index];
-    if (before.active !== false) {
-      req.flash('error', 'Product already active.');
-      return res.redirect('/admin/inventory');
-    }
-    const updated = { ...before, active: true };
-    const entry = buildAuditEntry('reactivated', req.session.user?.walletAddress, before, updated);
-    updated.history = [...(before.history || []), entry];
-    products[index] = updated;
-    if (lastProductId === id) lastProductId = products[index].id;
-    req.flash('success', 'Product reactivated.');
-  } else {
-    req.flash('error', 'Product not found.');
-  }
-  res.redirect('/admin/inventory');
+// Basic stubs for navigation links used in header
+app.get('/user/profile', (_req, res) => {
+  if (!currentUser) return res.redirect('/login');
+  res.render('user-profile', {
+    user: currentUser,
+    errorMessages: [],
+    successMessages: []
+  });
 });
 
 app.get('/shopping', (_req, res) => {
-  const activeProducts = getActiveProducts();
-  res.render('shopping', { products: activeProducts });
+  if (!currentUser) return res.redirect('/login');
+  const cart = carts[currentUser.walletAddress?.toLowerCase()] || [];
+  const cartCount = cart.reduce((sum, item) => sum + Number(item.qty || 0), 0);
+  res.render('user-shopping', {
+    user: currentUser,
+    errorMessages: [],
+    successMessages: [],
+    cart,
+    cartCount,
+    products
+  });
 });
 
-app.get('/product', (req, res) => {
-  const fallbackImages = [
-    '/images/lolo_the_piggy.png',
-    '/images/pino_jojo.png',
-    '/images/hinono.png',
-    '/images/zimama.png',
-    '/images/sweet_bun.png',
-    '/images/hacibubu.png'
-  ];
-
-  const demoProducts = [
-    { id: 'lolo', productName: 'Lolo the Piggy', productDescription: 'A cheerful trio of piggy.', enableSet: true, enableIndividual: true, setPrice: 49.9, setStock: 8 },
-    { id: 'pino', productName: 'Pino JoJo', productDescription: 'Dreamy pastel friend.', enableIndividual: true, individualPrice: 37.9, individualStock: 5 },
-    { id: 'hinono', productName: 'Hinono', productDescription: 'Collector set of mystical figures.', enableSet: true, setPrice: 61.9, setStock: 0 },
-    { id: 'zimama', productName: 'Zimama', productDescription: 'Forest critter guardian.', enableIndividual: true, individualPrice: 37.9, individualStock: 3 },
-    { id: 'sweet-bun', productName: 'Sweet Bun', productDescription: 'Fluffy friend for cozy nights.', enableIndividual: true, individualPrice: 20.9, individualStock: 12 },
-    { id: 'hacibubu', productName: 'Hacibubu', productDescription: 'Limited run surprise.', enableIndividual: true, individualPrice: 38.8, individualStock: 7 }
-  ];
-
-  const normalizeProducts = (list, offset = 0) =>
-    list.map((item, index) => {
-      const price = Number(item.individualPrice || item.setPrice || 0) || 0;
-      const stock = Number(item.individualStock || item.setStock || 0) || 0;
-      const badge =
-        item.enableSet && item.enableIndividual
-          ? 'Single & Set'
-          : item.enableSet
-          ? 'Set'
-          : 'Single box';
-      const imageIndex = (offset + index) % fallbackImages.length;
-      return {
-        id: item.id || `product-${index}`,
-        name: item.productName || 'Mystery figure',
-        description: item.productDescription || 'Blind box collectible',
-        price,
-        stock,
-        badge,
-        image: item.image || fallbackImages[imageIndex]
-      };
-    });
-
-  const activeProducts = getActiveProducts();
-  const serverCatalog = normalizeProducts(activeProducts, 0);
-  const demoCatalog = normalizeProducts(demoProducts, activeProducts.length);
-  const catalog = serverCatalog.length ? [...serverCatalog, ...demoCatalog] : demoCatalog;
-  const targetId = req.query.id;
-  const selected = targetId ? catalog.find((item) => item.id === targetId) : catalog[0] || null;
-
-  res.render('product', { product: selected || null, catalog });
+app.get('/cart', (_req, res) => {
+  if (!currentUser) return res.redirect('/login');
+  const cart = carts[currentUser.walletAddress?.toLowerCase()] || [];
+  const totals = getCartTotals(cart);
+  res.render('cart', {
+    user: currentUser,
+    errorMessages: [],
+    successMessages: [],
+    items: cart,
+    cart,
+    totals
+  });
 });
 
-app.get('/cart', allowRoles(['user']), (req, res) => {
-  const cart = getCart(req);
-  const totals = calcCartTotals(cart);
-  res.render('cart', { cart, totals });
-});
-
-// Payment and invoice views (frontend-only handlers)
-app.get('/payment', allowRoles(['user']), (req, res) => {
-  const cart = getCart(req);
-  if (!cart.length) {
-    req.flash('error', 'Your cart is empty. Add items before proceeding to payment.');
-    return res.redirect('/cart');
-  }
-  return res.render('payment');
-});
-
-app.get('/invoice', (req, res) => {
-  res.render('invoice');
-});
-
-app.get('/order-tracking', allowRoles(['user']), (req, res) => {
-  res.render('order-tracking');
+app.get('/order-tracking', (_req, res) => {
+  if (!currentUser) return res.redirect('/login');
+  res.render('order-tracking', {
+    user: currentUser,
+    errorMessages: [],
+    successMessages: [],
+    orders: []
+  });
 });
 
 app.get('/support', (_req, res) => {
-  res.render('support');
-});
-
-app.post('/support', upload.array('attachments', 2), (req, res) => {
-  if (!req.session.user || req.session.user.role !== 'user') {
-    req.flash('error', 'Please log in with a user account to submit a ticket.');
-    return res.redirect('/login');
-  }
-  const { orderId, reason, description, address, contact } = req.body;
-  if (!orderId || !reason) {
-    req.flash('error', 'Order number and reason are required.');
-    return res.redirect('/support');
-  }
-  const desc = (description || '').slice(0, 300);
-  const files = (req.files || []).filter((f) => ['image/jpeg', 'image/png'].includes(f.mimetype)).slice(0, 2);
-  const attachments = files.map((f) => ({
-    mimetype: f.mimetype,
-    data: `data:${f.mimetype};base64,${f.buffer.toString('base64')}`
-  }));
-  const ticket = {
-    id: 'RF-' + Date.now().toString().slice(-6),
-    orderId,
-    customer: req.session.user.walletAddress,
-    amount: 0,
-    type: 'Pending',
-    reason,
-    description: desc,
-    requestNewItem: false,
-    address: address || '',
-    contact: contact || '',
-    status: 'Open',
-    attachments,
-    createdAt: new Date().toISOString()
-  };
-  refundTickets.push(ticket);
-  req.flash('success', 'Support ticket submitted.');
-  res.redirect('/support');
-});
-
-app.post('/cart/add', (req, res) => {
-  if (!req.session.user || req.session.user.role !== 'user') {
-    if (req.headers.accept && req.headers.accept.includes('application/json')) {
-      return res.status(401).json({ redirect: '/login', message: 'Please log in to add to cart.' });
-    }
-    req.flash('error', 'Please log in to add to cart.');
-    return res.redirect('/login');
-  }
-  const cart = getCart(req);
-  const item = sanitizeCartItem(req.body);
-  if (!item.id || !item.name || !Number.isFinite(item.price)) {
-    return res.status(400).json({ error: 'Invalid cart item.' });
-  }
-  const existing = cart.find((entry) => entry.id === item.id);
-  if (existing) existing.qty += item.qty;
-  else cart.push(item);
-  req.session.cart = cart;
-  const cartCount = cart.reduce((sum, entry) => sum + (Number(entry.qty) || 0), 0);
-
-  if (req.headers.accept && req.headers.accept.includes('application/json')) {
-    return res.json({ cartCount });
-  }
-  req.flash('success', 'Item added to cart.');
-  return res.redirect('/cart');
-});
-
-app.post('/cart/update', allowRoles(['user']), (req, res) => {
-  const cart = getCart(req);
-  const id = (req.body.id || '').toString();
-  const qty = Math.max(parseInt(req.body.qty, 10) || 0, 0);
-  const index = cart.findIndex((entry) => entry.id === id);
-  if (index >= 0) {
-    if (qty === 0) cart.splice(index, 1);
-    else cart[index].qty = qty;
-    req.session.cart = cart;
-  }
-  res.redirect('/cart');
-});
-
-app.post('/cart/remove/:id', allowRoles(['user']), (req, res) => {
-  const cart = getCart(req);
-  const id = req.params.id;
-  const index = cart.findIndex((entry) => entry.id === id);
-  if (index >= 0) {
-    cart.splice(index, 1);
-    req.session.cart = cart;
-  }
-  res.redirect('/cart');
-});
-
-app.post('/cart/clear', allowRoles(['user']), (req, res) => {
-  req.session.cart = [];
-  res.redirect('/cart');
-});
-
-const protectedRoutes = [
-  { path: '/mainpage', roles: ['user'], title: 'Main Page' },
-  { path: '/order-tracking', roles: ['user'], title: 'Order Tracking' }
-];
-
-// GET route for Add Delivery Status
-app.get('/delivery/add-status', allowRoles(['delivery man']), (req, res) => {
-  res.render('delivery-add-status'); // render your new EJS page for adding deliveries
-});
-
-// POST route for Add Delivery Status
-app.post('/delivery/add-status', allowRoles(['delivery man']), (req, res) => {
-  const { customer, orderNumber, status } = req.body;
-  if (!orderNumber) {
-    req.flash('error', 'Order number is required.');
-    return res.redirect('/delivery/add-status');
-  }
-  const deliveryId = 'DEL-' + Date.now().toString().slice(-5);
-  deliveries.push({
-    id: deliveryId,
-    orderNumber,
-    deliveryId,
-    customer: customer || 'Unknown',
-    status: status || 'Pending',
-    proofImage: null
+  if (!currentUser) return res.redirect('/login');
+  res.render('support', {
+    user: currentUser,
+    errorMessages: [],
+    successMessages: []
   });
-  req.flash('success', 'Delivery added successfully.');
-  res.redirect('/delivery/dashboard');
 });
 
-// GET route for Update Delivery Status
-app.get('/delivery/update-status', allowRoles(['delivery man', 'admin']), (req, res) => {
-  res.render('delivery-update-status', { deliveries }); // pass deliveries to the EJS
+// Update profile
+app.post('/user/profile', (req, res) => {
+  if (!currentUser) return res.redirect('/login');
+  const { name, contact, address } = req.body;
+  currentUser.name = name || currentUser.name;
+  currentUser.contact = contact || currentUser.contact;
+  currentUser.address = address || currentUser.address;
+  res.render('user-profile', {
+    user: currentUser,
+    errorMessages: [],
+    successMessages: ['Profile updated']
+  });
 });
 
-// POST route for Update Delivery Status
-app.post('/delivery/update-status', allowRoles(['delivery man', 'admin']), upload.single('proof'), (req, res) => {
-  const { id, status } = req.body;
-  const redirectUrl = req.session.user?.role === 'admin' ? '/delivery/update-status' : '/delivery/dashboard';
-  const delivery = deliveries.find((d) => d.id === id || d.deliveryId === id);
-  if (!delivery) {
-    req.flash('error', 'Delivery not found.');
-    return res.redirect(redirectUrl);
+// Support ticket stub (accept up to 2 attachments)
+app.post('/support', upload.array('attachments', 2), (req, res) => {
+  if (!currentUser) return res.redirect('/login');
+  if (!req.body.orderId || !req.body.reason) {
+    return res.status(400).render('support', {
+      user: currentUser,
+      errorMessages: ['Order number and reason are required'],
+      successMessages: []
+    });
   }
+  res.render('support', {
+    user: currentUser,
+    errorMessages: [],
+    successMessages: ['Ticket submitted. Our team will reach out soon.']
+  });
+});
 
-  if (status === 'Completed' && req.session.user?.role !== 'admin') {
-    req.flash('error', 'Only admins can mark a delivery as completed.');
-    return res.redirect(redirectUrl);
+// Cart APIs
+app.post('/cart/add', (req, res) => {
+  if (!currentUser) {
+    return res.status(401).json({ redirect: '/login' });
   }
-
-  if (delivery.status === 'Completed' && !hasApprovedRefund(id)) {
-    req.flash('error', 'Completed orders cannot be changed unless a refund was approved.');
-    return res.redirect(redirectUrl);
+  const { id, name, price, qty } = req.body || {};
+  const wallet = currentUser.walletAddress?.toLowerCase();
+  if (!wallet || !id) return res.status(400).json({ error: 'Invalid cart payload' });
+  const cart = carts[wallet] || [];
+  const existing = cart.find((item) => String(item.id) === String(id));
+  if (existing) {
+    existing.qty = Number(existing.qty || 0) + Number(qty || 1);
+  } else {
+    cart.push({ id, name, price: Number(price || 0), qty: Number(qty || 1) });
   }
+  carts[wallet] = cart;
+  const cartCount = cart.reduce((sum, item) => sum + Number(item.qty || 0), 0);
+  return respondCart(req, res, { success: true, cartCount });
+});
 
-  // If delivery man moves to pending confirmation, require proof and hold for admin approval.
-  if (status === 'Pending confirmation') {
-    if (req.session.user?.role !== 'admin' && (!req.file || !['image/jpeg', 'image/png'].includes(req.file.mimetype))) {
-      req.flash('error', 'Please upload a .jpg or .png proof image to mark delivery.');
-      return res.redirect(redirectUrl);
+app.post('/cart/update', (req, res) => {
+  if (!currentUser) return res.status(401).json({ redirect: '/login' });
+  const { id, qty } = req.body || {};
+  const wallet = currentUser.walletAddress?.toLowerCase();
+  const cart = carts[wallet] || [];
+  const item = cart.find((p) => String(p.id) === String(id));
+  if (item) {
+    item.qty = Math.max(0, Number(qty || 0));
+    carts[wallet] = cart.filter((p) => Number(p.qty) > 0);
+  }
+  const cartCount = (carts[wallet] || []).reduce((sum, p) => sum + Number(p.qty || 0), 0);
+  const totals = getCartTotals(carts[wallet]);
+  return respondCart(req, res, { success: true, cartCount, totals });
+});
+
+app.post('/cart/remove/:id', (req, res) => {
+  if (!currentUser) return res.status(401).json({ redirect: '/login' });
+  const wallet = currentUser.walletAddress?.toLowerCase();
+  const cart = carts[wallet] || [];
+  carts[wallet] = cart.filter((p) => String(p.id) !== String(req.params.id));
+  const cartCount = (carts[wallet] || []).reduce((sum, p) => sum + Number(p.qty || 0), 0);
+  const totals = getCartTotals(carts[wallet]);
+  return respondCart(req, res, { success: true, cartCount, totals });
+});
+
+app.post('/cart/clear', (req, res) => {
+  if (!currentUser) return res.status(401).json({ redirect: '/login' });
+  const wallet = currentUser.walletAddress?.toLowerCase();
+  carts[wallet] = [];
+  return respondCart(req, res, { success: true, cartCount: 0, totals: getCartTotals([]) });
+});
+
+// Helpers
+function getCartTotals(cart = []) {
+  const subtotal = cart.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.qty || 0), 0);
+  const shipping = subtotal > 0 ? 5 : 0;
+  const total = subtotal + shipping;
+  return { subtotal, shipping, total };
+}
+
+function respondCart(req, res, payload) {
+  const acceptsHtml = (req.headers.accept || '').includes('text/html');
+  if (acceptsHtml) {
+    return res.redirect('/cart');
+  }
+  return res.json(payload);
+}
+
+function seedProduct(
+  id,
+  name,
+  price,
+  stock,
+  badge,
+  image,
+  description,
+  enableIndividual = true,
+  enableSet = false,
+  setPrice = 0,
+  setStock = 0,
+  setBoxes = 0
+) {
+  return {
+    id,
+    name,
+    productName: name,
+    productDescription: description,
+    price,
+    badge,
+    image,
+    enableIndividual,
+    individualPrice: price,
+    individualStock: stock,
+    enableSet,
+    setPrice,
+    setStock,
+    setBoxes,
+    stock,
+    active: true
+  };
+}
+
+// Payment page (stub)
+app.get('/payment', (_req, res) => {
+  if (!currentUser) return res.redirect('/login');
+  const cart = carts[currentUser.walletAddress?.toLowerCase()] || [];
+  const totals = getCartTotals(cart);
+  res.render('payment', {
+    user: currentUser,
+    cart,
+    totals,
+    errorMessages: [],
+    successMessages: []
+  });
+});
+
+// Invoice page stub
+app.get('/invoice', (_req, res) => {
+  if (!currentUser) return res.redirect('/login');
+  const cart = carts[currentUser.walletAddress?.toLowerCase()] || [];
+  const totals = getCartTotals(cart);
+  res.render('invoice', {
+    user: currentUser,
+    cart,
+    totals,
+    errorMessages: [],
+    successMessages: []
+  });
+});
+
+// Admin dashboard stub
+app.get('/admin/dashboard', (_req, res) => {
+  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
+  res.render('admin-home', {
+    user: currentUser,
+    errorMessages: [],
+    successMessages: []
+  });
+});
+
+app.get('/admin/inventory', (_req, res) => {
+  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
+  res.render('admin-inventory', {
+    user: currentUser,
+    errorMessages: [],
+    successMessages: [],
+    products
+  });
+});
+
+app.get('/admin/add-product', (_req, res) => {
+  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
+  res.render('admin-add-product', {
+    user: currentUser,
+    errorMessages: [],
+    successMessages: []
+  });
+});
+
+app.post('/admin/add-product', upload.any(), (req, res) => {
+  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
+  const {
+    productName,
+    productDescription,
+    priceWei,
+    individualPrice,
+    individualStock,
+    setPrice,
+    setStock,
+    enableSet,
+    enableIndividual,
+    setBoxes
+  } = req.body || {};
+  const nextId = products.length ? products.length + 1 : 1;
+  const enableIndividualBool = enableIndividual === 'on' || enableIndividual === true || enableIndividual === 'true';
+  const enableSetBool = enableSet === 'on' || enableSet === true || enableSet === 'true';
+  const indivPriceNum = Number(individualPrice || 0) || 0;
+  const indivStockNum = Number(individualStock || 0) || 0;
+  const setPriceNum = Number(setPrice || 0) || 0;
+  const setStockNum = Number(setStock || 0) || 0;
+  const setBoxesNum = Number(setBoxes || 0) || 0;
+  const badge =
+    enableSetBool && enableIndividualBool ? 'Single & Set' : enableSetBool ? 'Set' : 'Single box';
+
+  products.push(
+    seedProduct(
+      `prod-${nextId}`,
+      productName || 'New Product',
+      indivPriceNum || Number(priceWei || 0) || setPriceNum,
+      indivStockNum || setStockNum,
+      badge,
+      '/images/lolo_the_piggy.png',
+      productDescription || '',
+      enableIndividualBool,
+      enableSetBool,
+      setPriceNum,
+      setStockNum,
+      setBoxesNum
+    )
+  );
+  res.render('admin-add-product', {
+    user: currentUser,
+    errorMessages: [],
+    successMessages: ['Product added (demo, not persisted)']
+  });
+});
+
+app.get('/admin/orders', (_req, res) => {
+  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
+  res.render('admin-orders', {
+    user: currentUser,
+    errorMessages: [],
+    successMessages: [],
+    orders: []
+  });
+});
+
+app.get('/admin/users', (_req, res) => {
+  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
+  res.render('admin-users', {
+    user: currentUser,
+    errorMessages: [],
+    successMessages: [],
+    users: Object.values(users)
+  });
+});
+
+app.get('/admin/users/edit/:wallet', (req, res) => {
+  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
+  const wallet = (req.params.wallet || '').toLowerCase();
+  const target = users[wallet];
+  if (!target) return res.status(404).send('User not found');
+  res.render('admin-user-edit', {
+    user: currentUser,
+    errorMessages: [],
+    successMessages: [],
+    targetUser: target
+  });
+});
+
+app.post('/admin/users/edit/:wallet', (req, res) => {
+  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
+  const wallet = (req.params.wallet || '').toLowerCase();
+  const target = users[wallet];
+  if (!target) return res.status(404).send('User not found');
+  const { name, address, contact, role } = req.body;
+  target.name = name || target.name;
+  target.address = address || target.address;
+  target.contact = contact || target.contact;
+  target.role = role || target.role;
+  res.redirect('/admin/users');
+});
+
+app.post('/admin/reactivate-user/:wallet', (req, res) => {
+  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
+  const wallet = (req.params.wallet || '').toLowerCase();
+  const target = users[wallet];
+  if (target) target.active = true;
+  res.redirect('/admin/users');
+});
+
+app.post('/admin/deactivate-user/:wallet', (req, res) => {
+  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
+  const wallet = (req.params.wallet || '').toLowerCase();
+  const target = users[wallet];
+  if (target) target.active = false;
+  res.redirect('/admin/users');
+});
+
+app.get('/admin/customer-service', (_req, res) => {
+  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
+  res.render('admin-customer-service', {
+    user: currentUser,
+    errorMessages: [],
+    successMessages: [],
+    tickets: []
+  });
+});
+
+// Admin product update/deactivate/reactivate
+app.get('/admin/update-product', (req, res) => {
+  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
+  const id = req.query.id;
+  const product = products.find((p) => String(p.id) === String(id));
+  if (!product) return res.status(404).send('Product not found');
+  res.render('admin-update-product', {
+    user: currentUser,
+    product,
+    productId: product.id,
+    hasProduct: true,
+    errorMessages: [],
+    successMessages: []
+  });
+});
+
+const updateProductHandler = (req, res) => {
+  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
+  const id = req.params.id || req.query.id || req.body.productId || req.body.id;
+  const product = products.find((p) => String(p.id) === String(id));
+  if (!product) return res.status(404).send('Product not found');
+
+  const {
+    productName,
+    productDescription,
+    individualPrice,
+    individualStock,
+    setPrice,
+    setStock,
+    setBoxes,
+    enableIndividual,
+    enableSet
+  } = req.body || {};
+
+  const enableIndividualBool = enableIndividual === 'on' || enableIndividual === true || enableIndividual === 'true';
+  const enableSetBool = enableSet === 'on' || enableSet === true || enableSet === 'true';
+
+  product.name = productName || product.name;
+  product.productName = productName || product.productName;
+  product.productDescription = productDescription || product.productDescription;
+  product.description = product.productDescription;
+  product.enableIndividual = enableIndividualBool;
+  product.enableSet = enableSetBool;
+  product.individualPrice = Number(individualPrice || 0) || 0;
+  product.individualStock = Number(individualStock || 0) || 0;
+  product.setPrice = Number(setPrice || 0) || 0;
+  product.setStock = Number(setStock || 0) || 0;
+  product.setBoxes = Number(setBoxes || 0) || 0;
+  product.price = product.individualPrice || product.setPrice || product.price;
+  product.stock = product.individualStock || product.setStock || product.stock;
+  product.badge = enableSetBool && enableIndividualBool ? 'Single & Set' : enableSetBool ? 'Set' : 'Single box';
+
+  res.redirect('/admin/inventory');
+};
+
+app.post('/admin/update-product', express.urlencoded({ extended: true }), updateProductHandler);
+app.post('/admin/update-product/:id', express.urlencoded({ extended: true }), updateProductHandler);
+
+app.post('/admin/deactivate-product/:id', (req, res) => {
+  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
+  const id = req.params.id;
+  const product = products.find((p) => String(p.id) === String(id));
+  if (product) product.active = false;
+  res.redirect('/admin/inventory');
+});
+
+app.post('/admin/reactivate-product/:id', (req, res) => {
+  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
+  const id = req.params.id;
+  const product = products.find((p) => String(p.id) === String(id));
+  if (product) product.active = true;
+  res.redirect('/admin/inventory');
+});
+
+// Admin product detail view used by inventory links
+app.get('/admin/product/:id', (req, res) => {
+  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
+  const id = req.params.id;
+  const product = products.find((p) => String(p.id) === String(id));
+  if (!product) return res.status(404).send('Product not found');
+  res.render('admin-product-history', {
+    user: currentUser,
+    product,
+    history: [],
+    errorMessages: [],
+    successMessages: []
+  });
+});
+
+// Product detail
+app.get('/product', (req, res) => {
+  if (!currentUser) return res.redirect('/login');
+  const id = req.query.id;
+  const product = products.find((p) => String(p.id) === String(id));
+  if (!product) return res.status(404).send('Product not found');
+  const cart = carts[currentUser.walletAddress?.toLowerCase()] || [];
+  const cartCount = cart.reduce((sum, item) => sum + Number(item.qty || 0), 0);
+  res.render('user-product', {
+    user: currentUser,
+    product,
+    cartCount,
+    catalog: products.filter((p) => p.id !== product.id),
+    errorMessages: [],
+    successMessages: []
+  });
+});
+
+// Provide contract config for the frontend Web3 instance
+app.get('/contract-config', (_req, res) => {
+  res.json({
+    providerUrl,
+    contractAddress,
+    abi: contractAbi
+  });
+});
+
+// Receive data fetched from smart contract via frontend Web3
+app.post('/web3ConnectData', (req, res) => {
+  try {
+    const { petDataRead = [], contractAddress: clientAddress, acct, nPets = 0 } = req.body;
+    account = acct || '';
+    noOfPets = Number(nPets) || 0;
+    if (clientAddress && !contractAddress) contractAddress = clientAddress;
+
+    listOfPets = petDataRead.slice(0, noOfPets).map((entry, idx) => ({
+      id: idx + 1,
+      petInfo: formatPetInfo(entry.petInfo),
+      ownership: formatOwnershipInfo(entry.ownershipInfo || []),
+      vaccinations: formatVaccinationInfo(entry.vaccinationInfo || []),
+      training: formatTrainingInfo(entry.trainingInfo || [])
+    }));
+    loading = false;
+
+    return res.json({ success: true, data: listOfPets, message: 'Pet data processed successfully' });
+  } catch (error) {
+    console.error('Error in web3ConnectData:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Expose loading flag for polling from frontend
+app.get('/loading-status', (_req, res) => {
+  res.json({ loading });
+});
+
+// Single pet page
+app.get('/pet/:id', (req, res) => {
+  try {
+    const petId = req.params.id;
+    const index = listOfPets.findIndex((pet) => pet.id.toString() === petId.toString());
+    if (index === -1) return res.status(404).send('Pet not found');
+    res.render('pet', { acct: account, petData: listOfPets[index], loading: false });
+  } catch (error) {
+    console.error('Error in pet route:', error);
+    res.status(500).send('Error finding pet');
+  }
+});
+
+// Add pet form
+app.get('/addPet', (_req, res) => {
+  res.render('addPet', { acct: account });
+});
+
+// Handle pet creation request from frontend (actual chain tx handled client-side)
+app.post('/addPet', upload.single('image'), (req, res) => {
+  try {
+    const { petId, name, dob, gender, price } = req.body;
+    if (!petId || !name || !dob || !gender || !price) {
+      return res.status(400).json({ error: 'Missing required fields' });
     }
-    if (req.session.user?.role !== 'admin') {
-      const proofImage = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
-      delivery.proofImage = proofImage;
-    }
-    delivery.status = 'Pending confirmation';
-    const linkedOrder = orders.find((o) => o.id === delivery.orderNumber);
-    if (linkedOrder) linkedOrder.status = 'Pending Delivery Confirmation';
-    req.flash('success', 'Proof submitted. Awaiting admin confirmation.');
-    return res.redirect(redirectUrl);
+    addFunc = 'addPetInfo';
+    addEnabled = true;
+    addObj = { petId, name, dob, gender, price };
+    res.redirect('/');
+  } catch (error) {
+    console.error('Error in pet registration:', error);
+    res.status(500).send('Error adding pet');
   }
-
-  delivery.status = status;
-  req.flash('success', 'Delivery status updated successfully.');
-  res.redirect(redirectUrl);
 });
 
+// Reset action flag after frontend processes tx
+app.post('/setFunc', (_req, res) => {
+  addEnabled = null;
+  res.json({ success: true, message: 'set data successfully' });
+});
 
+app.get('/addVaccination/:id', (req, res) => {
+  res.render('addVaccination', { acct: account, petId: req.params.id });
+});
+
+app.post('/addVaccination', (req, res) => {
+  try {
+    const { vaccine, dateOfVaccine, doctor, clinic, contact, emailId, petId } = req.body;
+    if (!petId || !vaccine || !dateOfVaccine || !doctor || !clinic || !contact || !emailId) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    addFunc = 'addVaccination';
+    addEnabled = true;
+    addObj = { petId, vaccine, dateOfVaccine, doctor, clinic, contact, emailId };
+    res.redirect('/');
+  } catch (error) {
+    console.error('Error adding vaccination:', error);
+    res.status(500).send('Error adding pet vaccine');
+  }
+});
+
+app.get('/addTraining/:id', (req, res) => {
+  res.render('addTraining', { acct: account, petId: req.params.id });
+});
+
+app.post('/addTraining', (req, res) => {
+  try {
+    const { trainingType, name, org, trainingDate, contact, progress, petId } = req.body;
+    if (!petId || !name || !org || !trainingDate || !contact || !progress || !trainingType) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    addFunc = 'addTraining';
+    addEnabled = true;
+    addObj = { petId, name, org, trainingDate, contact, progress, trainingType };
+    res.redirect('/');
+  } catch (error) {
+    console.error('Error adding training:', error);
+    res.status(500).send('Error adding pet training');
+  }
+});
+
+app.get('/addOwner/:id', (req, res) => {
+  res.render('addOwner', { acct: account, petId: req.params.id });
+});
+
+app.post('/addOwner', (req, res) => {
+  try {
+    const { ownerId, name, transferDate, contact, emailId, petId } = req.body;
+    if (!petId || !name || !ownerId || !transferDate || !contact || !emailId) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    addFunc = 'addOwner';
+    addEnabled = true;
+    addObj = { petId, name, ownerId, transferDate, contact, emailId };
+    res.redirect('/');
+  } catch (error) {
+    console.error('Error adding pet owner:', error);
+    res.status(500).send('Error adding pet owner');
+  }
+});
+
+app.post('/buyPet/:id', (req, res) => {
+  try {
+    const petId = req.params.id;
+    const { petCost } = req.body;
+    if (!petId || !petCost) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    addFunc = 'buyPet';
+    addEnabled = true;
+    addObj = { petId, petCost };
+    res.redirect('/');
+  } catch (error) {
+    console.error('Error in buyPet:', error);
+    res.status(500).send('Error buying pet');
+  }
+});
+
+// Helper formatting functions
+function formatPetInfo(petInfo = []) {
+  return {
+    id: petInfo[0],
+    name: petInfo[1],
+    dateOfBirth: petInfo[2],
+    gender: petInfo[3],
+    price: petInfo[4],
+    status: petInfo[5]
+  };
+}
+
+function formatOwnershipInfo(ownershipInfo = []) {
+  return ownershipInfo.map((record) => ({
+    ownerId: record[0],
+    ownerName: record[1],
+    transferDate: record[2],
+    phone: record[3],
+    email: record[4]
+  }));
+}
+
+function formatVaccinationInfo(vaccinationInfo = []) {
+  return vaccinationInfo.map((record) => ({
+    vaccineName: record[0],
+    dateAdministered: record[1],
+    doctorname: record[2],
+    clinic: record[3],
+    phone: record[4],
+    email: record[5]
+  }));
+}
+
+function formatTrainingInfo(trainingInfo = []) {
+  return trainingInfo.map((record) => ({
+    trainingType: record[0],
+    traninerName: record[1],
+    organization: record[2],
+    phone: record[3],
+    trainingDate: record[4],
+    progress: record[5]
+  }));
+}
+
+// Start server
 app.listen(PORT, () => {
-  console.log('Toy store dApp frontend running on http://localhost:' + PORT);
+  console.log(`Server running on port ${PORT}`);
 });
