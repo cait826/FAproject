@@ -80,6 +80,10 @@
         border: 1px solid var(--line);
         font-size: 0.98rem;
       }
+      input[readonly] {
+        background: #f8fafc;
+        color: var(--muted);
+      }
       .grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -129,7 +133,7 @@
       <div class="card">
         <h1>Edit User</h1>
         <p>
-          Update profile details and keep the audit trail synced.
+          Admins can only change user roles. Profile fields must be updated by the user.
           <span class="status <%= user.active === false ? 'inactive' : 'active' %>">
             <%= user.active === false ? 'Deactivated' : 'Active' %>
           </span>
@@ -138,7 +142,7 @@
           <div class="grid">
             <div>
               <label for="name">Name</label>
-              <input id="name" name="name" type="text" value="<%= user.name %>" required />
+              <input id="name" name="name" type="text" value="<%= user.name %>" readonly />
             </div>
             <div>
               <label for="walletAddress">Wallet Address</label>
@@ -154,15 +158,15 @@
             </div>
             <div>
               <label for="contact">Contact</label>
-              <input id="contact" name="contact" type="text" value="<%= user.contact %>" required />
+              <input id="contact" name="contact" type="text" value="<%= user.contact %>" readonly />
             </div>
           </div>
           <div>
             <label for="address">Address</label>
-            <input id="address" name="address" type="text" value="<%= user.address %>" required />
+            <input id="address" name="address" type="text" value="<%= user.address %>" readonly />
           </div>
           <div class="actions">
-            <button class="btn" type="submit">Save changes</button>
+            <button class="btn" type="submit">Save role</button>
             <a class="btn secondary" href="/admin/users/history/<%= encodeURIComponent(user.walletAddress) %>">View audit history</a>
           </div>
         </form>

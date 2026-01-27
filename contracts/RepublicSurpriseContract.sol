@@ -103,36 +103,14 @@ contract RepublicSurpriseContract {
     mapping(uint256 => Product) public products;
     mapping(uint256 => RepublicSurpriseStatus) public productInventoryStatus;
 
-    // ---------- Product Audit ----------
-    struct ProductAudit {
-        uint256 timestamp;
-        address actor;
-        string action;
-    }
-
-    mapping(uint256 => ProductAudit[]) private productAudits;
-
+    // ---------- Product Audit (events only) ----------
     event ProductAdded(uint256 indexed id, string name, uint256 priceWei, bool enableIndividual, bool enableSet);
     event ProductUpdated(uint256 indexed id, string name, uint256 priceWei, bool enableIndividual, bool enableSet);
     event ProductStatusChanged(uint256 indexed id, ProductStatus status);
-    event ProductAuditLogged(uint256 indexed id, string action, address actor);
-
-    function getProductAuditCount(uint256 id) public view returns (uint256) {
-        return productAudits[id].length;
-    }
-
-    function getProductAudit(uint256 id, uint256 index)
-        public
-        view
-        returns (uint256 timestamp, address actor, string memory action)
-    {
-        ProductAudit storage a = productAudits[id][index];
-        return (a.timestamp, a.actor, a.action);
-    }
+    event ProductAuditLogged(uint256 indexed id, string action, address actor, uint256 timestamp);
 
     function _logProductAudit(uint256 id, string memory action) internal {
-        productAudits[id].push(ProductAudit(block.timestamp, msg.sender, action));
-        emit ProductAuditLogged(id, action, msg.sender);
+        emit ProductAuditLogged(id, action, msg.sender, block.timestamp);
     }
 
     function _validateBlindBoxConfig(
@@ -301,29 +279,35 @@ contract RepublicSurpriseContract {
     event UserRegistered(address indexed user, bytes32 profileHash);
     event UserProfileUpdated(address indexed user, bytes32 profileHash);
     event UserStatusChanged(address indexed user, bool active);
+    event UserAuditLogged(address indexed user, string action, address actor, bytes32 profileHash, bool active, uint256 timestamp);
 
     function registerUser(address user, bytes32 profileHash) public onlyAdmin {
         require(!users[user].exists, "User exists");
         users[user] = UserProfile(true, true, profileHash);
         emit UserRegistered(user, profileHash);
+        emit UserAuditLogged(user, "REGISTER", msg.sender, profileHash, true, block.timestamp);
     }
 
-    function updateUserProfile(address user, bytes32 profileHash) public onlyAdmin {
+    function updateUserProfile(address user, bytes32 profileHash) public {
+        require(msg.sender == user, "user only");
         require(users[user].exists, "User not found");
         users[user].profileHash = profileHash;
         emit UserProfileUpdated(user, profileHash);
+        emit UserAuditLogged(user, "UPDATE_PROFILE", msg.sender, profileHash, users[user].active, block.timestamp);
     }
 
     function deactivateUser(address user) public onlyAdmin {
         require(users[user].exists, "User not found");
         users[user].active = false;
         emit UserStatusChanged(user, false);
+        emit UserAuditLogged(user, "DEACTIVATE", msg.sender, users[user].profileHash, false, block.timestamp);
     }
 
     function reactivateUser(address user) public onlyAdmin {
         require(users[user].exists, "User not found");
         users[user].active = true;
         emit UserStatusChanged(user, true);
+        emit UserAuditLogged(user, "REACTIVATE", msg.sender, users[user].profileHash, true, block.timestamp);
     }
 
     // ---------- Cart ---------- (angela)

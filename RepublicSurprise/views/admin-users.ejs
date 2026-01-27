@@ -138,7 +138,7 @@
       </div>
       <div class="card">
         <h1>User Dashboard</h1>
-        <p>View all registered users and their details.</p>
+        <p>View registered users, manage roles, and update account status.</p>
         <% if (users && users.length) { %>
           <table>
             <thead>
@@ -171,7 +171,7 @@
                   </td>
                   <td>
                     <div class="actions">
-                      <a class="btn-link" href="/admin/users/edit/<%= encodeURIComponent(u.walletAddress) %>">Edit</a>
+                      <a class="btn-link" href="/admin/users/edit/<%= encodeURIComponent(u.walletAddress) %>">Edit Role</a>
                       <% if (u.active) { %>
                         <form action="/admin/deactivate-user/<%= encodeURIComponent(u.walletAddress) %>" method="post">
                           <button class="btn danger" type="submit">Deactivate</button>

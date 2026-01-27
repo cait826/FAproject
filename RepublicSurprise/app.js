@@ -418,13 +418,19 @@ app.post('/admin/users/edit/:walletAddress', allowRoles(['admin']), (req, res) =
   }
   const { name, walletAddress, role, address, contact } = req.body;
   const errors = [];
-  if (!name) errors.push('Name is required.');
-  if (!address) errors.push('Address is required.');
-  if (!contact) errors.push('Contact number is required.');
   const allowedRoles = ['user', 'admin', 'delivery man'];
   if (!role || !allowedRoles.includes(role)) errors.push('Role is required.');
+  if (name && name !== user.name) {
+    errors.push('Name can only be edited by the user.');
+  }
   if (walletAddress && walletAddress !== targetWallet) {
     errors.push('Wallet address cannot be changed.');
+  }
+  if (address && address !== user.address) {
+    errors.push('Address can only be edited by the user.');
+  }
+  if (contact && contact !== user.contact) {
+    errors.push('Contact number can only be edited by the user.');
   }
 
   if (errors.length) {
@@ -434,18 +440,15 @@ app.post('/admin/users/edit/:walletAddress', allowRoles(['admin']), (req, res) =
 
   const updated = {
     ...user,
-    name,
     walletAddress: targetWallet,
-    role,
-    address,
-    contact
+    role
   };
   const entry = buildUserAuditEntry('updated', req.session.user?.walletAddress, user, updated);
   updated.history = [...(user.history || []), entry];
 
   users[targetKey] = updated;
 
-  req.flash('success', 'User profile updated (demo only).');
+  req.flash('success', 'User role updated.');
   res.redirect('/admin/users');
 });
 
@@ -465,7 +468,7 @@ app.post('/admin/deactivate-user/:walletAddress', allowRoles(['admin']), (req, r
   const entry = buildUserAuditEntry('deactivated', req.session.user?.walletAddress, user, updated);
   updated.history = [...(user.history || []), entry];
   users[userKey] = updated;
-  req.flash('success', 'User deactivated (demo only).');
+  req.flash('success', 'User deactivated.');
   res.redirect('/admin/users');
 });
 
@@ -485,7 +488,7 @@ app.post('/admin/reactivate-user/:walletAddress', allowRoles(['admin']), (req, r
   const entry = buildUserAuditEntry('reactivated', req.session.user?.walletAddress, user, updated);
   updated.history = [...(user.history || []), entry];
   users[userKey] = updated;
-  req.flash('success', 'User reactivated (demo only).');
+  req.flash('success', 'User reactivated.');
   res.redirect('/admin/users');
 });
 
@@ -907,7 +910,7 @@ app.post('/admin/add-product', allowRoles(['admin']), upload.array('images', 3),
   newProduct.history.push(buildAuditEntry('created', req.session.user?.walletAddress, null, newProduct));
   products.push(newProduct);
   lastProductId = newProduct.id;
-  req.flash('success', 'Product saved (demo only).');
+  req.flash('success', 'Product saved.');
   res.redirect('/admin/add-product');
 });
 
@@ -939,7 +942,7 @@ app.post('/admin/update-product', allowRoles(['admin']), upload.array('images', 
     products.push(created);
     lastProductId = created.id;
   }
-  req.flash('success', 'Product updated (demo only).');
+  req.flash('success', 'Product updated.');
   res.redirect(`/admin/update-product${targetId ? `?id=${targetId}` : ''}`);
 });
 
@@ -972,7 +975,7 @@ app.post('/admin/deactivate-product/:id', allowRoles(['admin']), (req, res) => {
     updated.history = [...(before.history || []), entry];
     products[index] = updated;
     if (lastProductId === id) lastProductId = products[index].id;
-    req.flash('success', 'Product deactivated (demo only).');
+    req.flash('success', 'Product deactivated.');
   } else {
     req.flash('error', 'Product not found.');
   }
@@ -993,7 +996,7 @@ app.post('/admin/reactivate-product/:id', allowRoles(['admin']), (req, res) => {
     updated.history = [...(before.history || []), entry];
     products[index] = updated;
     if (lastProductId === id) lastProductId = products[index].id;
-    req.flash('success', 'Product reactivated (demo only).');
+    req.flash('success', 'Product reactivated.');
   } else {
     req.flash('error', 'Product not found.');
   }
