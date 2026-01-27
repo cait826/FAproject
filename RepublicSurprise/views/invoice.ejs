@@ -255,7 +255,18 @@
     // create or update tracking entry (ensure orderId persisted)
     try {
       const placedAt = inv.dateTime || new Date().toLocaleString();
-      const tracking = JSON.parse(sessionStorage.getItem(TRACKING_KEY) || 'null') || {
+      const rawTracking = sessionStorage.getItem(TRACKING_KEY);
+      let list = [];
+      if (rawTracking) {
+        try {
+          const parsed = JSON.parse(rawTracking);
+          list = Array.isArray(parsed) ? parsed : (parsed ? [parsed] : []);
+        } catch (e) {
+          list = [];
+        }
+      }
+
+      const baseEntry = {
         orderId: inv.orderId,
         invoiceId: inv.invoiceId || '',
         placedAt,
@@ -268,11 +279,14 @@
         ],
         sgdTotal: inv.sgdTotal || inv.total || 0
       };
-      tracking.orderId = inv.orderId;
-      tracking.invoiceId = inv.invoiceId || tracking.invoiceId;
-      tracking.items = inv.items || tracking.items;
-      tracking.sgdTotal = inv.sgdTotal || inv.total || tracking.sgdTotal;
-      sessionStorage.setItem(TRACKING_KEY, JSON.stringify(tracking));
+
+      const idx = list.findIndex(x => x && x.orderId === baseEntry.orderId);
+      if (idx >= 0) {
+        list[idx] = { ...list[idx], ...baseEntry };
+      } else {
+        list.push(baseEntry);
+      }
+      sessionStorage.setItem(TRACKING_KEY, JSON.stringify(list));
     } catch(e) { /* ignore */ }
 
     // persist updated invoice data (with orderId/contact) back to storage

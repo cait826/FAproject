@@ -324,10 +324,7 @@
     }
 
     async function loadCheckout(){
-      const raw = sessionStorage.getItem(CHECKOUT_KEY) || sessionStorage.getItem(ALT_KEY);
-      if(raw){ try{ return JSON.parse(raw); }catch(e){} }
-
-      // Try to fetch cart HTML from server and parse items (no server changes required)
+      // Always prefer the server cart to avoid stale sessionStorage data.
       try{
         const res = await fetch('/cart', { cache: 'no-store' });
         if(res && res.ok){
@@ -372,6 +369,9 @@
           return checkout;
         }
       }catch(e){ /* ignore and fall back */ }
+
+      const raw = sessionStorage.getItem(CHECKOUT_KEY) || sessionStorage.getItem(ALT_KEY);
+      if(raw){ try{ return JSON.parse(raw); }catch(e){} }
 
       return { items: [{ name: 'Demo Surprise Box', qty: 1, price: 0.01, description: '' }], total: 0.01 };
     }
@@ -515,7 +515,22 @@
         sgdTotal: inv.sgdTotal
       };
       // persist tracking and notify server to create a delivery record
-      try{ sessionStorage.setItem(TRACKING_KEY, JSON.stringify(tracking)); }catch(e){}
+      try{
+        const raw = sessionStorage.getItem(TRACKING_KEY);
+        let list = [];
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            list = Array.isArray(parsed) ? parsed : (parsed ? [parsed] : []);
+          } catch (e) {
+            list = [];
+          }
+        }
+        const idx = list.findIndex(x => x && x.orderId === tracking.orderId);
+        if (idx >= 0) list[idx] = { ...list[idx], ...tracking };
+        else list.push(tracking);
+        sessionStorage.setItem(TRACKING_KEY, JSON.stringify(list));
+      }catch(e){}
 
       // create delivery record for delivery staff — do not redirect the paying user
       const payload = {

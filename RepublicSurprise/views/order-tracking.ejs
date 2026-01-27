@@ -33,6 +33,10 @@
 
     <div class="grid">
       <div>
+        <div id="order-switcher" style="margin-bottom:10px; display:none;">
+          <label for="order-select" style="font-weight:700;">Choose order</label>
+          <select id="order-select" style="margin-left:8px; padding:6px 8px; border-radius:8px; border:1px solid rgba(0,0,0,0.15);"></select>
+        </div>
         <div><strong>Order ID:</strong> <span id="order-id"></span></div>
         <div><strong>Invoice ID:</strong> <span id="invoice-id"></span></div>
         <div><strong>Placed:</strong> <span id="placed-at"></span></div>
@@ -67,12 +71,20 @@
     return 'S$' + (value * rate).toFixed(2);
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
+  function readTrackingList(){
     const raw = sessionStorage.getItem(TRACKING_KEY);
-    if (!raw) { $('no-tracking').style.display = 'block'; return; }
-    let data = null;
-    try { data = JSON.parse(raw); } catch (e) { $('no-tracking').style.display = 'block'; return; }
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+      if (parsed && typeof parsed === 'object') return [parsed];
+      return [];
+    } catch (e) {
+      return [];
+    }
+  }
 
+  function renderTracking(data){
     $('order-id').textContent = data.orderId || '';
     $('invoice-id').textContent = data.invoiceId || '';
     $('placed-at').textContent = data.placedAt || '';
@@ -97,7 +109,39 @@
       tr.innerHTML = '<td>' + (it.name || '') + '</td><td style="text-align:center">' + (it.qty || 0) + '</td><td style="text-align:right">' + fmtSgd(it.price || 0, rate) + '</td>';
       items.appendChild(tr);
     });
+  }
 
+  document.addEventListener('DOMContentLoaded', () => {
+    const list = readTrackingList();
+    if (!list.length) { $('no-tracking').style.display = 'block'; return; }
+
+    const params = new URLSearchParams(window.location.search);
+    const requested = params.get('orderId');
+    let current = requested ? list.find(x => x && x.orderId === requested) : null;
+    if (!current) current = list[list.length - 1];
+
+    if (list.length > 1) {
+      const switcher = $('order-switcher');
+      const select = $('order-select');
+      select.innerHTML = '';
+      list.forEach(item => {
+        const opt = document.createElement('option');
+        opt.value = item.orderId || '';
+        opt.textContent = item.orderId || 'Unknown order';
+        if (item.orderId === current.orderId) opt.selected = true;
+        select.appendChild(opt);
+      });
+      select.addEventListener('change', () => {
+        const next = select.value;
+        if (!next) return;
+        const url = new URL(window.location.href);
+        url.searchParams.set('orderId', next);
+        window.location.href = url.toString();
+      });
+      switcher.style.display = 'block';
+    }
+
+    renderTracking(current);
     $('tracking-card').style.display = 'block';
   });
 })();
