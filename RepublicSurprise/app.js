@@ -4,6 +4,7 @@ const session = require('express-session');
 const flash = require('connect-flash');
 const multer = require('multer');
 const crypto = require('crypto');
+const { Web3 } = require('web3');
 
 const app = express();
 const PORT = 3000;
@@ -11,11 +12,144 @@ const PORT = 3000;
 const users = {}; // simple in-memory user store for demo
 const products = [];
 let lastProductId = null;
+const web3 = new Web3(process.env.WEB3_PROVIDER_URL || 'http://127.0.0.1:7545');
+const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS || '';
+const ADMIN_PRIVATE_KEY = process.env.ADMIN_PRIVATE_KEY || '';
+const CONTRACT_ABI = [
+  {
+    inputs: [
+      { internalType: 'uint256', name: 'id', type: 'uint256' },
+      { internalType: 'string', name: 'name', type: 'string' },
+      { internalType: 'string', name: 'description', type: 'string' },
+      { internalType: 'uint256', name: 'priceWei', type: 'uint256' },
+      { internalType: 'bool', name: 'enableIndividual', type: 'bool' },
+      { internalType: 'bool', name: 'enableSet', type: 'bool' },
+      { internalType: 'uint256', name: 'individualPriceWei', type: 'uint256' },
+      { internalType: 'uint256', name: 'individualStock', type: 'uint256' },
+      { internalType: 'uint256', name: 'setPriceWei', type: 'uint256' },
+      { internalType: 'uint256', name: 'setStock', type: 'uint256' },
+      { internalType: 'uint256', name: 'setBoxes', type: 'uint256' }
+    ],
+    name: 'addProduct',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function'
+  },
+  {
+    inputs: [
+      { internalType: 'uint256', name: 'id', type: 'uint256' },
+      { internalType: 'string', name: 'name', type: 'string' },
+      { internalType: 'string', name: 'description', type: 'string' },
+      { internalType: 'uint256', name: 'priceWei', type: 'uint256' },
+      { internalType: 'bool', name: 'enableIndividual', type: 'bool' },
+      { internalType: 'bool', name: 'enableSet', type: 'bool' },
+      { internalType: 'uint256', name: 'individualPriceWei', type: 'uint256' },
+      { internalType: 'uint256', name: 'individualStock', type: 'uint256' },
+      { internalType: 'uint256', name: 'setPriceWei', type: 'uint256' },
+      { internalType: 'uint256', name: 'setStock', type: 'uint256' },
+      { internalType: 'uint256', name: 'setBoxes', type: 'uint256' }
+    ],
+    name: 'updateProduct',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function'
+  },
+  {
+    inputs: [
+      { internalType: 'uint256', name: 'id', type: 'uint256' },
+      { internalType: 'string', name: 'action', type: 'string' }
+    ],
+    name: 'logProductAudit',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function'
+  },
+  {
+    inputs: [
+      { internalType: 'address', name: 'user', type: 'address' },
+      { internalType: 'string', name: 'action', type: 'string' }
+    ],
+    name: 'logUserAudit',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function'
+  }
+];
+let contractInstance = null;
+const getContract = () => {
+  if (!CONTRACT_ADDRESS) return null;
+  if (!contractInstance) {
+    contractInstance = new web3.eth.Contract(CONTRACT_ABI, CONTRACT_ADDRESS);
+  }
+  return contractInstance;
+};
+const getAdminAccount = () => {
+  if (!ADMIN_PRIVATE_KEY) return null;
+  try {
+    const account = web3.eth.accounts.privateKeyToAccount(ADMIN_PRIVATE_KEY);
+    if (!web3.eth.accounts.wallet.get(account.address)) {
+      web3.eth.accounts.wallet.add(account);
+    }
+    return account;
+  } catch {
+    return null;
+  }
+};
+const sendContractTx = async (method) => {
+  const contract = getContract();
+  const account = getAdminAccount();
+  if (!contract || !account || !method) return null;
+  try {
+    const gas = await method.estimateGas({ from: account.address }).catch(() => null);
+    const receipt = await method.send({ from: account.address, gas: gas || undefined });
+    return receipt?.transactionHash || null;
+  } catch {
+    return null;
+  }
+};
+
+const productStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, path.join(__dirname, 'public', 'images'));
+  },
+  filename: (_req, file, cb) => {
+    const safeName = (file.originalname || 'upload')
+      .replace(/[^a-zA-Z0-9._-]/g, '_')
+      .slice(0, 80);
+    const unique = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}-${safeName}`;
+    cb(null, unique);
+  }
+});
+
+const uploadProduct = multer({
+  storage: productStorage,
+  limits: { files: 3 },
+  fileFilter: (_req, file, cb) => {
+    if (['image/jpeg', 'image/png'].includes(file.mimetype)) return cb(null, true);
+    return cb(null, false);
+  }
+});
+
 const upload = multer({ storage: multer.memoryStorage(), limits: { files: 3 } });
 
 const normalizeWalletAddress = (address) => (address || '').trim().toLowerCase();
 const normalizeDisplayName = (value) => (value || '').trim().toLowerCase();
 const normalizeContactNumber = (value) => (value || '').replace(/\D/g, '');
+const toUint = (value) => {
+  const parsed = parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+};
+const toWeiSafe = (value) => {
+  const num = Number(value || 0);
+  if (!Number.isFinite(num) || num <= 0) return '0';
+  return web3.utils.toWei(String(num), 'ether');
+};
+const getChainProductId = (product) => {
+  if (!product) return null;
+  if (Number.isFinite(Number(product.chainId))) return Number(product.chainId);
+  const parsed = Number(product.id);
+  return Number.isFinite(parsed) ? parsed : null;
+};
 const getUserByWallet = (address) => {
   const key = normalizeWalletAddress(address);
   if (!key) return null;
@@ -69,7 +203,7 @@ const pickUserFields = (source) =>
     return acc;
   }, {});
 
-const buildAuditEntry = (action, actor, before, after) => {
+const buildAuditEntry = (action, actor, before, after, txHash = '') => {
   const beforeSnapshot = before ? pickProductFields(before) : null;
   const afterSnapshot = after ? pickProductFields(after) : null;
   const changes = [];
@@ -93,11 +227,12 @@ const buildAuditEntry = (action, actor, before, after) => {
     timestamp,
     changes,
     snapshot,
-    hash
+    hash,
+    txHash: txHash || ''
   };
 };
 
-const buildUserAuditEntry = (action, actor, before, after) => {
+const buildUserAuditEntry = (action, actor, before, after, txHash = '') => {
   const beforeSnapshot = before ? pickUserFields(before) : null;
   const afterSnapshot = after ? pickUserFields(after) : null;
   const changes = [];
@@ -121,7 +256,8 @@ const buildUserAuditEntry = (action, actor, before, after) => {
     timestamp,
     changes,
     snapshot,
-    hash
+    hash,
+    txHash: txHash || ''
   };
 };
 
@@ -408,7 +544,7 @@ app.get('/admin/users/edit/:walletAddress', allowRoles(['admin']), (req, res) =>
   res.render('admin-user-edit', { user });
 });
 
-app.post('/admin/users/edit/:walletAddress', allowRoles(['admin']), (req, res) => {
+app.post('/admin/users/edit/:walletAddress', allowRoles(['admin']), async (req, res) => {
   const targetWallet = req.params.walletAddress;
   const targetKey = normalizeWalletAddress(targetWallet);
   const user = targetKey ? users[targetKey] : null;
@@ -443,7 +579,10 @@ app.post('/admin/users/edit/:walletAddress', allowRoles(['admin']), (req, res) =
     walletAddress: targetWallet,
     role
   };
-  const entry = buildUserAuditEntry('updated', req.session.user?.walletAddress, user, updated);
+  let txHash = '';
+  const method = getContract()?.methods.logUserAudit(targetWallet, 'UPDATE_ROLE');
+  txHash = (await sendContractTx(method)) || '';
+  const entry = buildUserAuditEntry('updated', req.session.user?.walletAddress, user, updated, txHash);
   updated.history = [...(user.history || []), entry];
 
   users[targetKey] = updated;
@@ -835,26 +974,41 @@ app.get('/admin/add-product', allowRoles(['admin']), (req, res) => {
   res.render('admin-add-product');
 });
 
-const buildProductPayload = (body) => ({
-  productName: body.productName || '',
-  productDescription: body.productDescription || '',
-  mainImageIndex: body.mainImageIndex || '1',
-  enableIndividual: !!body.enableIndividual,
-  enableSet: !!body.enableSet,
-  individualPrice: body.individualPrice || '',
-  individualStock: body.individualStock || '',
-  setBoxes: body.setBoxes || '',
-  setPrice: body.setPrice || '',
-  setStock: body.setStock || ''
-});
+const getProductImages = (files = []) =>
+  files
+    .filter((file) => ['image/jpeg', 'image/png'].includes(file.mimetype))
+    .map((file) => `/images/${file.filename}`);
 
-const createProduct = (body) => ({
-  id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
-  createdAt: new Date(),
-  ...buildProductPayload(body),
-  active: true,
-  history: []
-});
+const buildProductPayload = (body, files = []) => {
+  const payload = {
+    productName: body.productName || '',
+    productDescription: body.productDescription || '',
+    mainImageIndex: body.mainImageIndex || '1',
+    enableIndividual: !!body.enableIndividual,
+    enableSet: !!body.enableSet,
+    individualPrice: body.individualPrice || '',
+    individualStock: body.individualStock || '',
+    setBoxes: body.setBoxes || '',
+    setPrice: body.setPrice || '',
+    setStock: body.setStock || ''
+  };
+  const images = getProductImages(files);
+  const mainIndex = Math.max(parseInt(payload.mainImageIndex, 10) - 1, 0);
+  const image = images[mainIndex] || images[0] || '';
+  return { ...payload, images, image };
+};
+
+const createProduct = (body, files = []) => {
+  const now = Date.now();
+  return {
+    id: now.toString(36) + Math.random().toString(36).slice(2, 7),
+    chainId: now,
+    createdAt: new Date(),
+    ...buildProductPayload(body, files),
+    active: true,
+    history: []
+  };
+};
 
 const validateProductPayload = (body, files) => {
   const errors = [];
@@ -900,14 +1054,32 @@ const calcCartTotals = (cart) => {
   return { subtotal, shipping, total };
 };
 
-app.post('/admin/add-product', allowRoles(['admin']), upload.array('images', 3), (req, res) => {
+app.post('/admin/add-product', allowRoles(['admin']), uploadProduct.array('images', 3), async (req, res) => {
   const errors = validateProductPayload(req.body, req.files);
   if (errors.length) {
     errors.forEach((msg) => req.flash('error', msg));
     return res.redirect('/admin/add-product');
   }
-  const newProduct = createProduct(req.body);
-  newProduct.history.push(buildAuditEntry('created', req.session.user?.walletAddress, null, newProduct));
+  const newProduct = createProduct(req.body, req.files);
+  let txHash = '';
+  const chainId = getChainProductId(newProduct);
+  if (chainId !== null) {
+    const method = getContract()?.methods.addProduct(
+      chainId,
+      newProduct.productName,
+      newProduct.productDescription,
+      toWeiSafe(newProduct.individualPrice || newProduct.setPrice || 0),
+      !!newProduct.enableIndividual,
+      !!newProduct.enableSet,
+      toWeiSafe(newProduct.individualPrice || 0),
+      toUint(newProduct.individualStock),
+      toWeiSafe(newProduct.setPrice || 0),
+      toUint(newProduct.setStock),
+      toUint(newProduct.setBoxes)
+    );
+    txHash = (await sendContractTx(method)) || '';
+  }
+  newProduct.history.push(buildAuditEntry('created', req.session.user?.walletAddress, null, newProduct, txHash));
   products.push(newProduct);
   lastProductId = newProduct.id;
   req.flash('success', 'Product saved.');
@@ -920,25 +1092,61 @@ app.get('/admin/update-product', allowRoles(['admin']), (req, res) => {
   res.render('admin-update-product', { product, hasProduct: products.length > 0, productId: targetId || '' });
 });
 
-app.post('/admin/update-product', allowRoles(['admin']), upload.array('images', 3), (req, res) => {
+app.post('/admin/update-product', allowRoles(['admin']), uploadProduct.array('images', 3), async (req, res) => {
   const targetId = req.query.id || lastProductId;
   const errors = validateProductPayload(req.body, req.files);
   if (errors.length) {
     errors.forEach((msg) => req.flash('error', msg));
     return res.redirect(`/admin/update-product${targetId ? `?id=${targetId}` : ''}`);
   }
-  const nextPayload = buildProductPayload(req.body);
+  const nextPayload = buildProductPayload(req.body, req.files);
   const existingIndex = products.findIndex((item) => item.id === targetId);
   if (existingIndex >= 0) {
     const before = products[existingIndex];
     const updated = { ...before, ...nextPayload, active: before.active !== false };
-    const entry = buildAuditEntry('updated', req.session.user?.walletAddress, before, updated);
+    let txHash = '';
+    const chainId = getChainProductId(updated);
+    if (chainId !== null) {
+      const method = getContract()?.methods.updateProduct(
+        chainId,
+        updated.productName,
+        updated.productDescription,
+        toWeiSafe(updated.individualPrice || updated.setPrice || 0),
+        !!updated.enableIndividual,
+        !!updated.enableSet,
+        toWeiSafe(updated.individualPrice || 0),
+        toUint(updated.individualStock),
+        toWeiSafe(updated.setPrice || 0),
+        toUint(updated.setStock),
+        toUint(updated.setBoxes)
+      );
+      txHash = (await sendContractTx(method)) || '';
+    }
+    const entry = buildAuditEntry('updated', req.session.user?.walletAddress, before, updated, txHash);
     updated.history = [...(before.history || []), entry];
     products[existingIndex] = updated;
     lastProductId = products[existingIndex].id;
   } else {
-    const created = createProduct(req.body);
-    created.history.push(buildAuditEntry('created', req.session.user?.walletAddress, null, created));
+    const created = createProduct(req.body, req.files);
+    let txHash = '';
+    const chainId = getChainProductId(created);
+    if (chainId !== null) {
+      const method = getContract()?.methods.addProduct(
+        chainId,
+        created.productName,
+        created.productDescription,
+        toWeiSafe(created.individualPrice || created.setPrice || 0),
+        !!created.enableIndividual,
+        !!created.enableSet,
+        toWeiSafe(created.individualPrice || 0),
+        toUint(created.individualStock),
+        toWeiSafe(created.setPrice || 0),
+        toUint(created.setStock),
+        toUint(created.setBoxes)
+      );
+      txHash = (await sendContractTx(method)) || '';
+    }
+    created.history.push(buildAuditEntry('created', req.session.user?.walletAddress, null, created, txHash));
     products.push(created);
     lastProductId = created.id;
   }

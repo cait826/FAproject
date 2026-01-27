@@ -107,10 +107,10 @@ contract RepublicSurpriseContract {
     event ProductAdded(uint256 indexed id, string name, uint256 priceWei, bool enableIndividual, bool enableSet);
     event ProductUpdated(uint256 indexed id, string name, uint256 priceWei, bool enableIndividual, bool enableSet);
     event ProductStatusChanged(uint256 indexed id, ProductStatus status);
-    event ProductAuditLogged(uint256 indexed id, string action, address actor, uint256 timestamp);
+    event ProductAuditLogged(uint256 indexed id, string action, address indexed actor, uint256 timestamp, bytes32 dataHash);
 
-    function _logProductAudit(uint256 id, string memory action) internal {
-        emit ProductAuditLogged(id, action, msg.sender, block.timestamp);
+    function _logProductAudit(uint256 id, string memory action, bytes32 dataHash) internal {
+        emit ProductAuditLogged(id, action, msg.sender, block.timestamp, dataHash);
     }
 
     function _validateBlindBoxConfig(
@@ -159,8 +159,8 @@ contract RepublicSurpriseContract {
     // Add product 
     function addProduct(
         uint256 id,
-        string memory name,
-        string memory description,
+        string calldata name,
+        string calldata description,
         uint256 priceWei,
         bool enableIndividual,
         bool enableSet,
@@ -202,15 +202,18 @@ contract RepublicSurpriseContract {
         RepublicSurpriseCount = productCount;
 
         _updateInventoryStatus(id);
-        _logProductAudit(id, "ADD_PRODUCT");
+        bytes32 dataHash = keccak256(
+            abi.encode(id, name, description, priceWei, enableIndividual, enableSet, individualPriceWei, individualStock, setPriceWei, setStock, setBoxes)
+        );
+        _logProductAudit(id, "ADD_PRODUCT", dataHash);
 
         emit ProductAdded(id, name, priceWei, enableIndividual, enableSet);
     }
 
     function updateProduct(
         uint256 id,
-        string memory name,
-        string memory description,
+        string calldata name,
+        string calldata description,
         uint256 priceWei,
         bool enableIndividual,
         bool enableSet,
@@ -246,7 +249,10 @@ contract RepublicSurpriseContract {
         p.setBoxes = setBoxes;
 
         _updateInventoryStatus(id);
-        _logProductAudit(id, "UPDATE_PRODUCT");
+        bytes32 dataHash = keccak256(
+            abi.encode(id, name, description, priceWei, enableIndividual, enableSet, individualPriceWei, individualStock, setPriceWei, setStock, setBoxes)
+        );
+        _logProductAudit(id, "UPDATE_PRODUCT", dataHash);
 
         emit ProductUpdated(id, name, priceWei, enableIndividual, enableSet);
     }
@@ -255,7 +261,7 @@ contract RepublicSurpriseContract {
         require(products[id].id != 0, "Product not found");
         products[id].status = ProductStatus.Inactive;
 
-        _logProductAudit(id, "DEACTIVATE_PRODUCT");
+        _logProductAudit(id, "DEACTIVATE_PRODUCT", keccak256(abi.encode(id, "DEACTIVATE_PRODUCT")));
         emit ProductStatusChanged(id, ProductStatus.Inactive);
     }
 
@@ -263,7 +269,7 @@ contract RepublicSurpriseContract {
         require(products[id].id != 0, "Product not found");
         products[id].status = ProductStatus.Active;
 
-        _logProductAudit(id, "REACTIVATE_PRODUCT");
+        _logProductAudit(id, "REACTIVATE_PRODUCT", keccak256(abi.encode(id, "REACTIVATE_PRODUCT")));
         emit ProductStatusChanged(id, ProductStatus.Active);
     }
 
@@ -279,7 +285,7 @@ contract RepublicSurpriseContract {
     event UserRegistered(address indexed user, bytes32 profileHash);
     event UserProfileUpdated(address indexed user, bytes32 profileHash);
     event UserStatusChanged(address indexed user, bool active);
-    event UserAuditLogged(address indexed user, string action, address actor, bytes32 profileHash, bool active, uint256 timestamp);
+    event UserAuditLogged(address indexed user, string action, address indexed actor, bytes32 profileHash, bool active, uint256 timestamp);
 
     function registerUser(address user, bytes32 profileHash) public onlyAdmin {
         require(!users[user].exists, "User exists");
@@ -308,6 +314,17 @@ contract RepublicSurpriseContract {
         users[user].active = true;
         emit UserStatusChanged(user, true);
         emit UserAuditLogged(user, "REACTIVATE", msg.sender, users[user].profileHash, true, block.timestamp);
+    }
+
+    function logProductAudit(uint256 id, string calldata action) external onlyAdmin {
+        require(products[id].id != 0, "Product not found");
+        _logProductAudit(id, action, keccak256(abi.encode(id, action)));
+    }
+
+    function logUserAudit(address user, string calldata action) external onlyAdmin {
+        UserProfile storage profile = users[user];
+        require(profile.exists, "User not found");
+        emit UserAuditLogged(user, action, msg.sender, profile.profileHash, profile.active, block.timestamp);
     }
 
     // ---------- Cart ---------- (angela)

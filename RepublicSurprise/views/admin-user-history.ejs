@@ -202,7 +202,7 @@
                   <td><%= entry.action %></td>
                   <td><%= formatTimestamp(entry.timestamp) %></td>
                   <td><%= entry.actor %></td>
-                  <td class="hash"><%= entry.hash || '-' %></td>
+                  <td class="hash"><%= entry.txHash || entry.hash || '-' %></td>
                   <td>
                     <% if (entry.changes && entry.changes.length) { %>
                       <ul class="changes">

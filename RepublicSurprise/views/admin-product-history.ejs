@@ -199,12 +199,12 @@
                   </td>
                   <td><%= formatTimestamp(entry.timestamp) %></td>
                   <td><%= entry.actor %></td>
-                  <td><%= entry.hash || '-' %></td>
+                  <td><%= entry.txHash || entry.hash || '-' %></td>
                   <td>
                     <% if (entry.changes && entry.changes.length) { %>
                       <ul class="changes">
                         <% entry.changes.forEach(function(change) { %>
-                          <li><%= change.field %>: <%= change.from %> → <%= change.to %></li>
+                          <li><%= change.field %>: <%= change.from %> -> <%= change.to %></li>
                         <% }) %>
                       </ul>
                     <% } else { %>
