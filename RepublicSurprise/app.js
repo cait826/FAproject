@@ -476,11 +476,23 @@ app.post('/support', upload.array('attachments', 2), (req, res) => {
     adjustProductStock(restockItems, +1);
   }
   const proofFiles = Array.isArray(req.files) ? req.files : [];
-  const attachments = proofFiles.map((file) => ({
-    name: file.originalname,
-    mimetype: file.mimetype,
-    data: file.buffer ? file.buffer.toString('base64') : ''
-  }));
+  const attachments = proofFiles.map((file) => {
+    let data = '';
+    if (file.buffer) {
+      data = file.buffer.toString('base64');
+    } else if (file.path) {
+      try {
+        data = fs.readFileSync(file.path).toString('base64');
+      } catch (_err) {
+        data = '';
+      }
+    }
+    return {
+      name: file.originalname,
+      mimetype: file.mimetype,
+      data
+    };
+  });
   tickets.push({
     id: `TIC-${String(tickets.length + 1).padStart(4, '0')}`,
     orderId: order.id,

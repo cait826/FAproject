@@ -184,7 +184,6 @@
               <tr>
                 <th>Product Name</th>
                 <th>Description</th>
-                <th>Purchase Types</th>
                 <th>Individual</th>
                 <th>Status</th>
                 <th>Actions</th>
@@ -198,7 +197,7 @@
                   </td>
                   <td><%= product.productDescription %></td>
                   <td>
-                    <%= product.enableIndividual ? 'Individual' : '' %>
+                    <%= product.enableIndividual ? 'Individual' : '-' %>
                   </td>
                   <td>
                     <% if (product.enableIndividual) { %>

@@ -125,7 +125,7 @@
     });
 
     const ticketCard = $('ticket-card');
-    if (ticketCard && data.ticket) {
+    if (ticketCard && data.ticket && (data.ticket.status === 'Approved' || data.ticket.status === 'Rejected')) {
       $('ticket-id').textContent = data.ticket.id || '';
       $('ticket-status').textContent = data.ticket.status || '';
       $('ticket-reason').textContent = data.ticket.reason || '';

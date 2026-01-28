@@ -104,6 +104,18 @@
         <% if (ticket.resolvedAt) { %>
           <div class="row"><div class="label">Resolved</div><div><%= ticket.resolvedAt %></div></div>
         <% } %>
+        <% if ((ticket.status === 'Approved' || ticket.status === 'Rejected') && ticket.attachments && ticket.attachments.length) { %>
+          <div style="margin-top:12px;">
+            <div class="label">Attachments</div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:8px;">
+              <% ticket.attachments.forEach(function(file){ %>
+                <% if (file && file.data && file.mimetype) { %>
+                  <img src="data:<%= file.mimetype %>;base64,<%= file.data %>" alt="<%= file.name || 'Attachment' %>" style="max-width:180px;border:1px solid #eee;border-radius:8px;padding:6px;" />
+                <% } %>
+              <% }) %>
+            </div>
+          </div>
+        <% } %>
         <hr style="margin:18px 0; border: none; border-top:1px solid rgba(0,0,0,0.08);" />
       <% } %>
       <h2 style="margin:0 0 8px;">Audit log</h2>
