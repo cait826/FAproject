@@ -23,7 +23,16 @@
         <% history.forEach(function(d){ %>
           <div class="entry">
             <div><strong>Order:</strong> <a href="/deliveries/<%= d.id %>"><%= d.orderNumber %></a></div>
-            <div class="meta">Status: <%= d.status %></div>
+            <div class="meta">
+              Status:
+              <% if (d.refundStatus === 'approved') { %>
+                Refunded
+              <% } else if (d.refundStatus === 'rejected') { %>
+                Refund rejected
+              <% } else { %>
+                <%= d.status %>
+              <% } %>
+            </div>
             <div class="meta">Customer: <%= d.customerName %></div>
             <% if (d.remarks) { %>
               <div style="margin-top:8px;"><strong>Remarks:</strong> <%= d.remarks %></div>

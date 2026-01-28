@@ -262,15 +262,11 @@
 
           <div class="fieldset">
             <h3>Blind Box Configuration</h3>
-            <p class="hint">Enable one or both purchase types.</p>
+            <p class="hint">Enable individual blind box purchases.</p>
             <div class="two-col">
               <label class="toggle-row">
                 <input type="checkbox" id="enableIndividual" name="enableIndividual" />
                 Enable Individual Blind Box
-              </label>
-              <label class="toggle-row">
-                <input type="checkbox" id="enableSet" name="enableSet" />
-                Enable Full Set
               </label>
             </div>
           </div>
@@ -289,25 +285,6 @@
             </div>
           </div>
 
-          <div class="fieldset hidden" id="setSection">
-            <h3>Full Set Settings</h3>
-            <p class="hint">Set stock is independent from individual stock.</p>
-            <div class="two-col">
-              <div>
-                <label for="setPrice">Set price ($)</label>
-                <input id="setPrice" name="setPrice" type="number" min="0" step="0.01" />
-              </div>
-              <div>
-                <label for="setStock">Stock quantity (set)</label>
-                <input id="setStock" name="setStock" type="number" min="0" step="1" />
-              </div>
-              <div>
-                <label for="setBoxes">Number of boxes in 1 set</label>
-                <input id="setBoxes" name="setBoxes" type="number" min="1" step="1" />
-              </div>
-            </div>
-          </div>
-
           <div class="actions">
             <button class="primary" type="submit">Add Product</button>
             <button class="ghost" type="reset">Clear Form</button>
@@ -319,17 +296,13 @@
 
     <script>
       const enableIndividual = document.getElementById('enableIndividual');
-      const enableSet = document.getElementById('enableSet');
       const individualSection = document.getElementById('individualSection');
-      const setSection = document.getElementById('setSection');
 
       const toggleSections = () => {
         individualSection.classList.toggle('hidden', !enableIndividual.checked);
-        setSection.classList.toggle('hidden', !enableSet.checked);
       };
 
       enableIndividual.addEventListener('change', toggleSections);
-      enableSet.addEventListener('change', toggleSections);
       toggleSections();
     </script>
   </body>

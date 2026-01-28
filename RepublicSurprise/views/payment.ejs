@@ -255,15 +255,16 @@
 
               <div class="address-panel">
                 <div class="field-row">
-                  <label for="fullName">Full name (required)</label>
-                  <input id="fullName" type="text" placeholder="Full name" autocomplete="name" />
+                  <label for="fullName">Full name</label>
+                  <input id="fullName" type="text" placeholder="Full name" autocomplete="name" maxlength="80" />
+                  <div class="small muted" id="nameStatus" aria-live="polite"></div>
                 </div>
                 <div class="field-row">
-                  <label for="shippingAddress">Shipping address (required)</label>
+                  <label for="shippingAddress">Shipping address</label>
                   <input id="shippingAddress" type="text" placeholder="Block / Street / Unit / Postal" autocomplete="shipping street-address" />
                 </div>
                 <div class="field-row" style="margin-top:8px;">
-                  <label for="contactNumber">Contact number (required)</label>
+                  <label for="contactNumber">Contact number</label>
                   <input id="contactNumber" type="tel" placeholder="+65 8123 4567" autocomplete="tel" />
                 </div>
                 <div class="small muted" id="addressStatus" aria-live="polite" style="margin-top:4px;"></div>
@@ -343,6 +344,8 @@
     const SERVER_WALLET = <%- JSON.stringify((user && user.walletAddress) ? user.walletAddress : '') %>;
     const SERVER_CUSTOMER_ADDRESS = <%- JSON.stringify((user && user.address) ? user.address : '') %>;
     const SERVER_CUSTOMER_CONTACT = <%- JSON.stringify((user && user.contact) ? user.contact : '') %>;
+    const NAME_MIN_WORDS = 2;
+    const NAME_MAX_WORDS = 6;
 
     const $ = id => document.getElementById(id);
 
@@ -356,18 +359,49 @@
     const addressStatus = () => $('addressStatus');
     const contactInput = () => $('contactNumber');
     const nameInput = () => $('fullName');
+    const nameStatus = () => $('nameStatus');
+
+    function normalizeName(value){
+      return (value || '').trim().replace(/\s+/g, ' ');
+    }
+
+    function countWords(value){
+      const normalized = normalizeName(value);
+      return normalized ? normalized.split(' ').length : 0;
+    }
+
+    function updateNameStatus(value){
+      const status = nameStatus();
+      if (!status) return;
+      const words = countWords(value);
+      if (!value) {
+        status.textContent = '';
+        return;
+      }
+      if (words < NAME_MIN_WORDS) {
+        status.textContent = 'Please enter first and last name.';
+        return;
+      }
+      if (words > NAME_MAX_WORDS) {
+        status.textContent = `Please keep your name to ${NAME_MAX_WORDS} words or fewer.`;
+        return;
+      }
+      status.textContent = '';
+    }
 
     function setAddress(value, lockInput = false){
       const input = addressInput();
       if(!input) return;
-      const val = (value || '').trim();
-      selectedAddress = val;
-      input.value = val;
-      input.readOnly = lockInput;
-      input.classList.toggle('muted', lockInput);
+      const raw = value == null ? '' : String(value);
+      selectedAddress = raw;
+      if (lockInput) {
+        input.value = raw;
+        input.readOnly = lockInput;
+        input.classList.toggle('muted', lockInput);
+      }
       const status = addressStatus();
       if(status){
-        status.textContent = val ? '' : 'Address is required to proceed.';
+        status.textContent = raw.trim() ? '' : 'Address is required to proceed.';
       }
       updateConfirmState();
     }
@@ -384,9 +418,9 @@
     function setName(value){
       const input = nameInput();
       if(!input) return;
-      const val = (value || '').trim();
-      selectedName = val;
-      input.value = val;
+      const raw = value == null ? '' : String(value);
+      selectedName = raw;
+      updateNameStatus(raw);
       updateConfirmState();
     }
 
@@ -394,7 +428,8 @@
       const btnConfirm = $('btnConfirm');
       const hasAddress = !!(selectedAddress && selectedAddress.trim().length);
       const hasContact = !!(selectedContact && selectedContact.trim().length);
-      const hasName = !!(selectedName && selectedName.trim().length);
+      const nameWords = countWords(selectedName);
+      const hasName = nameWords >= NAME_MIN_WORDS && nameWords <= NAME_MAX_WORDS;
       const hasWallet = !!connected;
       if (btnConfirm) btnConfirm.disabled = !(hasAddress && hasContact && hasName && hasWallet);
     }
@@ -537,7 +572,8 @@
     });
 
     $('btnConfirm').addEventListener('click', async ()=>{
-      if (!selectedAddress || !selectedAddress.trim()) {
+      const normalizedAddress = (selectedAddress || '').trim().replace(/\s+/g, ' ');
+      if (!normalizedAddress) {
         $('status').textContent = 'Please enter your shipping address.';
         updateConfirmState();
         return;
@@ -547,8 +583,20 @@
         updateConfirmState();
         return;
       }
-      if (!selectedName || !selectedName.trim()) {
+      const normalizedName = normalizeName(selectedName);
+      if (!normalizedName) {
         $('status').textContent = 'Please enter your name.';
+        updateConfirmState();
+        return;
+      }
+      const nameWords = countWords(normalizedName);
+      if (nameWords < NAME_MIN_WORDS) {
+        $('status').textContent = 'Please enter your first and last name.';
+        updateConfirmState();
+        return;
+      }
+      if (nameWords > NAME_MAX_WORDS) {
+        $('status').textContent = `Please keep your name to ${NAME_MAX_WORDS} words or fewer.`;
         updateConfirmState();
         return;
       }
@@ -558,12 +606,12 @@
       setTimeout(()=>{
         $('status').textContent = 'Payment successful (simulated)';
         // show the inline invoice (no auto-redirect)
-        showInvoice(connected, chk);
+        showInvoice(connected, chk, normalizedName, normalizedAddress);
       }, 900);
     });
     
 
-    function showInvoice(account, chk){
+    function showInvoice(account, chk, normalizedName, normalizedAddress){
       const orderId = 'ORD-' + Date.now();
       const inv = {
         invoiceId: 'INV-'+Date.now(),
@@ -572,17 +620,17 @@
         items: chk.items ? [...chk.items] : [],
         total: chk.total || 0,
         sgdTotal: (chk.total || 0),
-        shippingAddress: selectedAddress,
-        billingAddress: selectedAddress,
+        shippingAddress: normalizedAddress,
+        billingAddress: normalizedAddress,
         contact: selectedContact,
-        username: selectedName,
+        username: normalizedName,
         orderId
       };
 
       $('inv-id').textContent = inv.invoiceId;
       $('inv-date').textContent = inv.dateTime;
       $('inv-wallet').textContent = inv.wallet;
-      $('inv-name').textContent = selectedName;
+      $('inv-name').textContent = normalizedName;
       $('inv-addr').textContent = inv.shippingAddress || '';
       $('inv-contact').textContent = inv.contact || '';
 
@@ -640,8 +688,8 @@
       // create delivery record for delivery staff — do not redirect the paying user
       const payload = {
         orderId: tracking.orderId,
-        customerName: selectedName || SERVER_CUSTOMER_NAME || inv.wallet,
-        address: selectedAddress || SERVER_CUSTOMER_ADDRESS || '',
+        customerName: normalizedName || SERVER_CUSTOMER_NAME || inv.wallet,
+        address: normalizedAddress || SERVER_CUSTOMER_ADDRESS || '',
         contact: selectedContact || SERVER_CUSTOMER_CONTACT || '',
         customerWallet: account || '',
         items: chk.items || [],
@@ -663,12 +711,14 @@
       const orderPayload = {
         orderId: tracking.orderId,
         customerWallet: account || '',
-        customerName: SERVER_CUSTOMER_NAME || inv.wallet,
-        contact: SERVER_CUSTOMER_CONTACT || '',
+        customerName: normalizedName || SERVER_CUSTOMER_NAME || inv.wallet,
+        address: normalizedAddress || SERVER_CUSTOMER_ADDRESS || '',
+        contact: selectedContact || SERVER_CUSTOMER_CONTACT || '',
         product: (chk.items || []).map((it) => it.name).filter(Boolean).join(' + ') || 'Mystery Items',
         price: chk.total || 0,
         qty: (chk.items || []).reduce((sum, it) => sum + (Number(it.qty) || 0), 0) || 1,
-        status: 'Pending Delivery Confirmation'
+        status: 'Pending Delivery Confirmation',
+        items: chk.items || []
       };
       fetch('/create-order', {
         method: 'POST',

@@ -81,7 +81,11 @@
       <div class="row"><div class="label">Status</div><div><%= order.status %></div></div>
       <div class="proof">
         <% if (delivery && delivery.proofImage) { %>
-          <img src="<%= delivery.proofImage %>" alt="Proof of delivery for <%= order.id %>">
+          <% if (delivery.proofImage.data) { %>
+            <img src="data:<%= delivery.proofImage.mimetype %>;base64,<%= delivery.proofImage.data %>" alt="Proof of delivery for <%= order.id %>">
+          <% } else { %>
+            <img src="<%= delivery.proofImage %>" alt="Proof of delivery for <%= order.id %>">
+          <% } %>
         <% } else { %>
           <p style="color:#b45309;">No proof image submitted yet.</p>
         <% } %>

@@ -53,6 +53,19 @@
           <thead><tr><th>Item</th><th style="text-align:center">Qty</th><th style="text-align:right">Unit</th></tr></thead>
           <tbody id="items"></tbody>
         </table>
+        <div id="ticket-card" class="card" style="display:none; margin-top:14px;">
+          <div style="font-weight:700; margin-bottom:6px;">Refund request</div>
+          <div><strong>Ticket ID:</strong> <span id="ticket-id"></span></div>
+          <div><strong>Status:</strong> <span id="ticket-status"></span></div>
+          <div><strong>Reason:</strong> <span id="ticket-reason"></span></div>
+          <div><strong>Details:</strong> <span id="ticket-desc"></span></div>
+          <div id="ticket-wallet-row" style="display:none;"><strong>Refunded Wallet:</strong> <span id="ticket-wallet"></span></div>
+          <div id="ticket-resolved-row" style="display:none;"><strong>Resolved:</strong> <span id="ticket-resolved"></span></div>
+          <div id="ticket-attachments" style="display:none; margin-top:8px;">
+            <div style="font-weight:700; margin-bottom:6px;">Attachments</div>
+            <div id="ticket-attachments-grid" style="display:flex; gap:10px; flex-wrap:wrap;"></div>
+          </div>
+        </div>
         <div style="margin-top:12px">
           <a href="/shopping" class="btn" style="text-decoration:none">Back to Shop</a>
         </div>
@@ -110,6 +123,53 @@
       tr.innerHTML = '<td>' + (it.name || '') + '</td><td style="text-align:center">' + (it.qty || 0) + '</td><td style="text-align:right">' + fmtSgd(it.price || 0, rate) + '</td>';
       items.appendChild(tr);
     });
+
+    const ticketCard = $('ticket-card');
+    if (ticketCard && data.ticket) {
+      $('ticket-id').textContent = data.ticket.id || '';
+      $('ticket-status').textContent = data.ticket.status || '';
+      $('ticket-reason').textContent = data.ticket.reason || '';
+      $('ticket-desc').textContent = data.ticket.description || '-';
+      const walletRow = $('ticket-wallet-row');
+      if (data.ticket.refundedWallet) {
+        $('ticket-wallet').textContent = data.ticket.refundedWallet;
+        walletRow.style.display = 'block';
+      } else {
+        walletRow.style.display = 'none';
+      }
+      const resolvedRow = $('ticket-resolved-row');
+      if (data.ticket.resolvedAt) {
+        $('ticket-resolved').textContent = data.ticket.resolvedAt;
+        resolvedRow.style.display = 'block';
+      } else {
+        resolvedRow.style.display = 'none';
+      }
+      const attachmentsWrap = $('ticket-attachments');
+      const attachmentsGrid = $('ticket-attachments-grid');
+      if (attachmentsWrap && attachmentsGrid) {
+        attachmentsGrid.innerHTML = '';
+        const files = Array.isArray(data.ticket.attachments) ? data.ticket.attachments : [];
+        if (files.length) {
+          files.forEach((file) => {
+            if (!file || !file.data || !file.mimetype) return;
+            const img = document.createElement('img');
+            img.src = 'data:' + file.mimetype + ';base64,' + file.data;
+            img.alt = file.name || 'Attachment';
+            img.style.maxWidth = '180px';
+            img.style.border = '1px solid #eee';
+            img.style.borderRadius = '8px';
+            img.style.padding = '6px';
+            attachmentsGrid.appendChild(img);
+          });
+          attachmentsWrap.style.display = attachmentsGrid.childElementCount ? 'block' : 'none';
+        } else {
+          attachmentsWrap.style.display = 'none';
+        }
+      }
+      ticketCard.style.display = 'block';
+    } else if (ticketCard) {
+      ticketCard.style.display = 'none';
+    }
   }
 
   document.addEventListener('DOMContentLoaded', () => {
@@ -155,6 +215,9 @@
           const body = await res.json();
           if (body?.success) {
             current.statusHistory = [{ label: body.statusLabel, time: body.updatedAt || current.placedAt }];
+            if (body.ticket) {
+              current.ticket = body.ticket;
+            }
           }
         }
       } catch (e) { /* ignore */ }

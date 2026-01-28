@@ -90,14 +90,22 @@
         <div><span class="pill <%= order.status === 'Confirmed' || order.status === 'Completed' ? 'confirmed' : 'pending' %>"><%= order.status %></span></div>
       </div>
       <div class="actions">
-        <% if (order.status === 'Pending Delivery Confirmation') { %>
-          <form method="post" action="/admin/orders/confirm/<%= order.id %>">
-            <button class="action" type="submit">Confirm Delivery</button>
-          </form>
-        <% } %>
         <a class="action" style="text-decoration:none; display:inline-flex; align-items:center;" href="/admin/orders">Back to Orders</a>
       </div>
       <hr style="margin:18px 0; border: none; border-top:1px solid rgba(0,0,0,0.08);" />
+      <% if (ticket) { %>
+        <h2 style="margin:0 0 8px;">Refund request</h2>
+        <div class="row"><div class="label">Ticket ID</div><div><%= ticket.id %></div></div>
+        <div class="row"><div class="label">Reason</div><div><%= ticket.reason || '-' %></div></div>
+        <div class="row"><div class="label">Status</div><div><%= ticket.status || '-' %></div></div>
+        <% if (ticket.description) { %>
+          <div class="row"><div class="label">Details</div><div><%= ticket.description %></div></div>
+        <% } %>
+        <% if (ticket.resolvedAt) { %>
+          <div class="row"><div class="label">Resolved</div><div><%= ticket.resolvedAt %></div></div>
+        <% } %>
+        <hr style="margin:18px 0; border: none; border-top:1px solid rgba(0,0,0,0.08);" />
+      <% } %>
       <h2 style="margin:0 0 8px;">Audit log</h2>
       <% const audits = order.auditLog || order.audits || []; %>
       <% if (!audits.length) { %>

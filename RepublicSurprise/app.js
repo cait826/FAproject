@@ -74,10 +74,10 @@ app.use((req, _res, next) => {
 const users = {};
 const carts = {};
 const products = [
-  seedProduct('lolo', 'Lolo the Piggy', 49.9, 8, 'Set of 3', '/images/lolo_the_piggy.png', 'A cheerful trio of piggy pals.'),
+  seedProduct('lolo', 'Lolo the Piggy', 49.9, 8, 'Single box', '/images/lolo_the_piggy.png', 'A cheerful trio of piggy pals.'),
   seedProduct('pino', 'Pino JoJo', 37.9, 5, 'Single box', '/images/pino_jojo.png', 'Dreamy pastel friend.'),
   seedProduct('hacibubu', 'Hacibubu', 38.8, 7, 'Limited', '/images/hacibubu.png', 'Limited run surprise.'),
-  seedProduct('hinono', 'Hinono', 61.9, 4, 'Collector set', '/images/hinono.png', 'Collector set of mystical figures.'),
+  seedProduct('hinono', 'Hinono', 61.9, 4, 'Single box', '/images/hinono.png', 'Collector set of mystical figures.'),
   seedProduct('zimama', 'Zimama', 37.9, 3, 'Single box', '/images/zimama.png', 'Forest critter guardian.'),
   seedProduct('sweet-bun', 'Sweet Bun', 20.9, 12, 'Single box', '/images/sweet_bun.png', 'Fluffy friend for cozy nights.')
 ];
@@ -87,6 +87,11 @@ products.forEach((product) => {
 });
 const deliveries = [];
 const orders = [];
+const tickets = [];
+const REFUND_STATUS = {
+  APPROVED: 'approved',
+  REJECTED: 'rejected'
+};
 const DELIVERY_STATUS = {
   PENDING: 'pending',
   OUT_FOR_DELIVERY: 'out_for_delivery',
@@ -443,9 +448,11 @@ app.post('/delivery/update-status', upload.single('proof'), (req, res) => {
 app.post('/support', upload.array('attachments', 2), (req, res) => {
   if (!currentUser) return res.redirect('/login');
   const { orderId, reason } = req.body || {};
+  const userOrders = getOrdersForUser(currentUser);
   if (!orderId || !reason) {
     return res.status(400).render('support', {
       user: currentUser,
+      orders: userOrders,
       errorMessages: ['Order number and reason are required'],
       successMessages: []
     });
@@ -456,6 +463,7 @@ app.post('/support', upload.array('attachments', 2), (req, res) => {
   if (!order || (order.customer || '').toLowerCase() !== wallet) {
     return res.status(403).render('support', {
       user: currentUser,
+      orders: userOrders,
       errorMessages: ['You can only request support/refunds for your own orders.'],
       successMessages: []
     });
@@ -467,8 +475,29 @@ app.post('/support', upload.array('attachments', 2), (req, res) => {
       : [{ id: order.product, qty: order.qty }];
     adjustProductStock(restockItems, +1);
   }
+  const proofFiles = Array.isArray(req.files) ? req.files : [];
+  const attachments = proofFiles.map((file) => ({
+    name: file.originalname,
+    mimetype: file.mimetype,
+    data: file.buffer ? file.buffer.toString('base64') : ''
+  }));
+  tickets.push({
+    id: `TIC-${String(tickets.length + 1).padStart(4, '0')}`,
+    orderId: order.id,
+    customer: (order.customer || currentUser.walletAddress || '').toLowerCase(),
+    reason,
+    amount: Number(order.price || 0),
+    type: 'Full',
+    status: 'Open',
+    description: (req.body?.description || '').trim(),
+    address: (req.body?.address || '').trim(),
+    contact: (req.body?.contact || '').trim(),
+    attachments,
+    createdAt: new Date().toISOString()
+  });
   res.render('support', {
     user: currentUser,
+    orders: userOrders,
     errorMessages: [],
     successMessages: ['Ticket submitted. Our team will reach out soon.']
   });
@@ -725,12 +754,8 @@ function recordProductAudit(product, actor = 'admin', action = 'Product updated'
     'productName',
     'productDescription',
     'enableIndividual',
-    'enableSet',
     'individualPrice',
     'individualStock',
-    'setPrice',
-    'setStock',
-    'setBoxes',
     'price',
     'stock',
     'badge',
@@ -756,8 +781,32 @@ function recordProductAudit(product, actor = 'admin', action = 'Product updated'
   });
 }
 
+function normalizeFullName(value) {
+  return String(value || '').trim().replace(/\s+/g, ' ');
+}
+
+function hasFirstLastName(value) {
+  const normalized = normalizeFullName(value);
+  const parts = normalized.split(' ').filter(Boolean);
+  return parts.length >= 2;
+}
+
+function requireFullName(req, res, next) {
+  if (!currentUser) return next();
+  const incomingName = req.body?.customerName || currentUser?.name || '';
+  const normalized = normalizeFullName(incomingName);
+  if (!hasFirstLastName(normalized)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Full name (first and last) is required'
+    });
+  }
+  req.body.customerName = normalized;
+  next();
+}
+
 // Create order records coming from the payment page so admins can see them
-app.post('/create-order', (req, res) => {
+app.post('/create-order', requireFullName, (req, res) => {
   if (!currentUser) return res.status(401).json({ success: false, message: 'Login required' });
 
   const {
@@ -821,7 +870,7 @@ app.post('/create-order', (req, res) => {
 });
 
 // Create delivery record (used by payment flow to notify delivery team)
-app.post('/create-delivery', (req, res) => {
+app.post('/create-delivery', requireFullName, (req, res) => {
   if (!currentUser) return res.status(401).json({ success: false, message: 'Login required' });
 
   const { orderId, customerWallet, customerName, address, contact } = req.body || {};
@@ -857,28 +906,53 @@ app.post('/create-delivery', (req, res) => {
 app.get('/order-status/:id', (req, res) => {
   if (!currentUser) return res.status(401).json({ success: false, message: 'Login required' });
   const id = req.params.id;
+  const order = orders.find((o) => String(o.id) === String(id));
   const delivery = deliveries.find((d) => String(d.orderNumber || d.id) === String(id));
-  if (!delivery) {
+  if (!order && !delivery) {
     return res.status(404).json({ success: false, message: 'Order not found' });
   }
   // Ensure the requesting user owns the order
   const requester = (currentUser.walletAddress || '').toLowerCase();
-  if ((delivery.customer || '').toLowerCase() !== requester) {
+  const ownerWallet = (order?.customer || delivery?.customer || '').toLowerCase();
+  if (ownerWallet && ownerWallet !== requester) {
     return res.status(403).json({ success: false, message: 'Forbidden' });
   }
+  const ticket = tickets.find((t) => String(t.orderId) === String(id));
   const statusMap = {
     [DELIVERY_STATUS.PENDING]: 'Pending',
     [DELIVERY_STATUS.OUT_FOR_DELIVERY]: 'Out for delivery',
     [DELIVERY_STATUS.DELIVERED_PENDING]: 'Pending delivery confirmation',
     [DELIVERY_STATUS.COMPLETED]: 'Completed'
   };
-  const statusLabel = statusMap[delivery.status] || 'Pending';
+  let statusLabel = statusMap[delivery?.status] || order?.status || 'Pending';
+  let status = delivery?.status || order?.status || 'pending';
+  if (ticket?.status === 'Approved' || order?.refundStatus === REFUND_STATUS.APPROVED || order?.status === 'Refunded') {
+    statusLabel = 'Refunded';
+    status = 'refunded';
+  }
+  if (ticket?.status === 'Rejected' || order?.refundStatus === REFUND_STATUS.REJECTED || order?.status === 'Refund Rejected') {
+    statusLabel = 'Refund rejected';
+    status = 'refund_rejected';
+  }
   return res.json({
     success: true,
-    orderId: delivery.orderNumber,
-    status: delivery.status,
+    orderId: delivery?.orderNumber || order?.id || id,
+    status,
     statusLabel,
-    updatedAt: delivery.updatedAt || delivery.timestamp || ''
+    updatedAt: ticket?.resolvedAt || order?.refundUpdatedAt || delivery?.updatedAt || delivery?.timestamp || order?.updatedAt || '',
+    ticket: ticket
+      ? {
+        id: ticket.id,
+        status: ticket.status,
+        reason: ticket.reason,
+        description: ticket.description,
+        createdAt: ticket.createdAt,
+        resolvedAt: ticket.resolvedAt || '',
+        refundTx: ticket.refundTx || '',
+        refundedWallet: ticket.refundedWallet || '',
+        attachments: ticket.attachments || []
+      }
+      : null
   });
 });
 
@@ -890,11 +964,7 @@ function seedProduct(
   badge,
   image,
   description,
-  enableIndividual = true,
-  enableSet = false,
-  setPrice = 0,
-  setStock = 0,
-  setBoxes = 0
+  enableIndividual = true
 ) {
   return {
     id,
@@ -907,10 +977,6 @@ function seedProduct(
     enableIndividual,
     individualPrice: price,
     individualStock: stock,
-    enableSet,
-    setPrice,
-    setStock,
-    setBoxes,
     stock,
     active: true,
     auditLog: []
@@ -994,22 +1060,13 @@ app.post('/admin/add-product', upload.any(), (req, res) => {
     priceWei,
     individualPrice,
     individualStock,
-    setPrice,
-    setStock,
-    enableSet,
-    enableIndividual,
-    setBoxes
+    enableIndividual
   } = req.body || {};
   const nextId = products.length ? products.length + 1 : 1;
   const enableIndividualBool = enableIndividual === 'on' || enableIndividual === true || enableIndividual === 'true';
-  const enableSetBool = enableSet === 'on' || enableSet === true || enableSet === 'true';
   const indivPriceNum = Number(individualPrice || 0) || 0;
   const indivStockNum = Number(individualStock || 0) || 0;
-  const setPriceNum = Number(setPrice || 0) || 0;
-  const setStockNum = Number(setStock || 0) || 0;
-  const setBoxesNum = Number(setBoxes || 0) || 0;
-  const badge =
-    enableSetBool && enableIndividualBool ? 'Single & Set' : enableSetBool ? 'Set' : 'Single box';
+  const badge = 'Single box';
 
   // Use uploaded image (first file) if provided; fall back to default
   const firstFile = Array.isArray(req.files) && req.files.length ? req.files[0] : null;
@@ -1018,16 +1075,12 @@ app.post('/admin/add-product', upload.any(), (req, res) => {
   const newProduct = seedProduct(
     `prod-${nextId}`,
     productName || 'New Product',
-    indivPriceNum || Number(priceWei || 0) || setPriceNum,
-    indivStockNum || setStockNum,
+    indivPriceNum || Number(priceWei || 0),
+    indivStockNum,
     badge,
     imagePath,
     productDescription || '',
-    enableIndividualBool,
-    enableSetBool,
-    setPriceNum,
-    setStockNum,
-    setBoxesNum
+    enableIndividualBool
   );
   if (firstFile) {
     newProduct.images = [imagePath];
@@ -1065,25 +1118,15 @@ app.get('/admin/orders/:id', (req, res) => {
   if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
   const order = orders.find((item) => String(item.id) === String(req.params.id));
   if (!order) return res.status(404).send('Order not found');
-  res.render('admin-order-detail', {
-    user: currentUser,
-    order,
-    errorMessages: [],
-    successMessages: []
-  });
-});
-
-app.get('/admin/orders/check/:id', (req, res) => {
-  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
-  const order = orders.find((item) => String(item.id) === String(req.params.id));
-  if (!order) return res.status(404).send('Order not found');
   const delivery = deliveries.find(
     (item) => String(item.orderNumber || item.id) === String(order.id)
   );
-  res.render('admin-order-completion-check', {
+  const ticket = tickets.find((t) => String(t.orderId) === String(order.id));
+  res.render('admin-order-detail', {
     user: currentUser,
     order,
     delivery,
+    ticket,
     errorMessages: [],
     successMessages: []
   });
@@ -1093,6 +1136,12 @@ app.post('/admin/orders/confirm/:id', (req, res) => {
   if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
   const order = orders.find((item) => String(item.id) === String(req.params.id));
   if (!order) return res.status(404).send('Order not found');
+  const delivery = deliveries.find(
+    (item) => String(item.orderNumber || item.id) === String(order.id)
+  );
+  if (!delivery || !delivery.assignedTo || !delivery.proofImage) {
+    return res.status(400).send('Delivery assignment and proof are required before confirmation.');
+  }
   order.status = 'Completed';
   order.action = 'delivery completion';
   order.auditLog = order.auditLog || [];
@@ -1102,9 +1151,6 @@ app.post('/admin/orders/confirm/:id', (req, res) => {
     function: 'confirmDelivery',
     txHash: '0xDEMO'
   });
-  const delivery = deliveries.find(
-    (item) => String(item.orderNumber || item.id) === String(order.id)
-  );
   if (delivery) delivery.status = DELIVERY_STATUS.COMPLETED;
   res.redirect('/admin/orders');
 });
@@ -1122,6 +1168,34 @@ app.get('/admin/delivery/:id', (req, res) => {
     errorMessages: [],
     successMessages: []
   });
+});
+
+app.post('/admin/delivery/:id/approve', (req, res) => {
+  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
+  const delivery = deliveries.find(
+    (item) => String(item.deliveryId || item.id) === String(req.params.id)
+  );
+  if (!delivery) return res.status(404).send('Delivery not found');
+  if (!delivery.assignedTo || !delivery.proofImage) {
+    return res.status(400).send('Delivery assignment and proof are required before approval.');
+  }
+  delivery.status = DELIVERY_STATUS.COMPLETED;
+  delivery.updatedAt = new Date().toISOString();
+
+  const order = orders.find((item) => String(item.id) === String(delivery.orderNumber || delivery.id));
+  if (order) {
+    order.status = 'Completed';
+    order.action = 'delivery completion';
+    order.auditLog = order.auditLog || [];
+    order.auditLog.push({
+      action: 'Order completed',
+      timestamp: new Date().toISOString(),
+      function: 'confirmDelivery',
+      txHash: '0xDEMO'
+    });
+  }
+
+  res.redirect(`/admin/delivery/${delivery.deliveryId || delivery.id}`);
 });
 
 app.get('/demo/seed-order', (req, res) => {
@@ -1207,8 +1281,82 @@ app.get('/admin/customer-service', (_req, res) => {
     user: currentUser,
     errorMessages: [],
     successMessages: [],
-    tickets: []
+    tickets: tickets.slice().reverse()
   });
+});
+
+app.get('/admin/customer-service/:id', (req, res) => {
+  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
+  const ticket = tickets.find((t) => String(t.id) === String(req.params.id));
+  if (!ticket) return res.status(404).send('Ticket not found');
+  const order = orders.find((o) => String(o.id) === String(ticket.orderId));
+  res.render('admin-customer-service-detail', {
+    user: currentUser,
+    ticket,
+    order,
+    errorMessages: [],
+    successMessages: []
+  });
+});
+
+app.get('/admin/customer-service/approve/:id', (req, res) => {
+  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
+  const ticket = tickets.find((t) => String(t.id) === String(req.params.id));
+  if (!ticket) return res.status(404).send('Ticket not found');
+  ticket.status = 'Approved';
+  ticket.resolvedAt = new Date().toISOString();
+  ticket.refundTx = ticket.refundTx || '0xREFUND_DEMO';
+  ticket.refundedWallet = ticket.refundedWallet || ticket.customer;
+  const order = orders.find((o) => String(o.id) === String(ticket.orderId));
+  const delivery = deliveries.find((d) => String(d.orderNumber || d.id) === String(ticket.orderId));
+  if (order) {
+    order.status = 'Refunded';
+    order.refundStatus = REFUND_STATUS.APPROVED;
+    order.refundTicketId = ticket.id;
+    order.refundUpdatedAt = ticket.resolvedAt;
+    order.action = 'refund approved';
+    order.auditLog = order.auditLog || [];
+    order.auditLog.push({
+      action: 'Refund approved',
+      timestamp: ticket.resolvedAt,
+      function: 'approveRefund',
+      txHash: ticket.refundTx
+    });
+  }
+  if (delivery) {
+    delivery.refundStatus = REFUND_STATUS.APPROVED;
+    delivery.updatedAt = ticket.resolvedAt;
+  }
+  res.redirect('/admin/customer-service');
+});
+
+app.post('/admin/customer-service/reject/:id', (req, res) => {
+  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
+  const ticket = tickets.find((t) => String(t.id) === String(req.params.id));
+  if (!ticket) return res.status(404).send('Ticket not found');
+  ticket.status = 'Rejected';
+  ticket.resolvedAt = new Date().toISOString();
+  const order = orders.find((o) => String(o.id) === String(ticket.orderId));
+  const delivery = deliveries.find((d) => String(d.orderNumber || d.id) === String(ticket.orderId));
+  if (order) {
+    order.status = 'Refund Rejected';
+    order.refundStatus = REFUND_STATUS.REJECTED;
+    order.refundTicketId = ticket.id;
+    order.refundUpdatedAt = ticket.resolvedAt;
+    order.action = 'refund rejected';
+    order.auditLog = order.auditLog || [];
+    order.auditLog.push({
+      action: 'Refund rejected',
+      timestamp: ticket.resolvedAt,
+      function: 'rejectRefund',
+      txHash: '0xREFUND_REJECTED'
+    });
+  }
+  if (delivery) {
+    delivery.refundStatus = REFUND_STATUS.REJECTED;
+    delivery.updatedAt = ticket.resolvedAt;
+  }
+  res.redirect('/admin/customer-service');
 });
 
 // Admin product deactivate/reactivate
@@ -1317,29 +1465,21 @@ app.get('/loading-status', (_req, res) => {
 // Helper to normalize contract payload into UI-friendly product shape
 function normalizeProductPayload(raw, idx = 0) {
   const enableIndividual = raw.enableIndividual !== false;
-  const enableSet = !!raw.enableSet;
-  const badge = raw.badge || (enableSet && enableIndividual ? 'Single & Set' : enableSet ? 'Set' : 'Single box');
+  const badge = raw.badge || 'Single box';
 
   const individualPrice =
     Number(raw.individualPrice ?? raw.individualPriceWei ?? raw.price ?? raw.priceWei ?? 0) || 0;
   const individualStock = Number(raw.individualStock ?? raw.stock ?? 0) || 0;
-  const setPrice = Number(raw.setPrice ?? raw.setPriceWei ?? 0) || 0;
-  const setStock = Number(raw.setStock ?? 0) || 0;
-  const setBoxes = Number(raw.setBoxes ?? 0) || 0;
 
   return seedProduct(
     raw.id || raw.productId || `prod-${idx + 1}`,
     raw.name || raw.productName || `Product ${idx + 1}`,
-    individualPrice || setPrice,
-    individualStock || setStock,
+    individualPrice,
+    individualStock,
     badge,
     raw.image || '/images/lolo_the_piggy.png',
     raw.description || raw.productDescription || '',
-    enableIndividual,
-    enableSet,
-    setPrice,
-    setStock,
-    setBoxes
+    enableIndividual
   );
 }
 
@@ -1356,9 +1496,6 @@ function adjustProductStock(items = [], deltaSign = -1) {
       product.stock = product.individualStock;
     } else {
       product.stock = Math.max(0, Number(product.stock || 0) + delta);
-    }
-    if (product.enableSet) {
-      product.setStock = Math.max(0, Number(product.setStock || 0) + delta);
     }
   });
   listOfProducts = [...products];

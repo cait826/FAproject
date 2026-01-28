@@ -80,21 +80,62 @@
         <% } %>
       </div>
 
+      <% if (delivery.proofImage) { %>
+        <hr />
+        <h3>Delivery Proof</h3>
+        <% if (delivery.proofImage.data) { %>
+          <div style="margin-bottom:12px;"><img src="data:<%= delivery.proofImage.mimetype %>;base64,<%= delivery.proofImage.data %>" style="max-width:320px;border:1px solid #eee;padding:6px;border-radius:8px;"/></div>
+        <% } else { %>
+          <div style="margin-bottom:12px;"><img src="<%= delivery.proofImage %>" style="max-width:320px;border:1px solid #eee;padding:6px;border-radius:8px;"/></div>
+        <% } %>
+        <% if (user && user.role === 'admin' && delivery.status !== 'completed' && delivery.status !== 'Completed') { %>
+          <form method="POST" action="/admin/delivery/<%= delivery.deliveryId || delivery.id %>/approve">
+            <button type="submit" class="action">Approve Delivery</button>
+          </form>
+        <% } %>
+      <% } %>
+
       <% if (user && user.role === 'delivery man' && delivery.assignedTo === user.walletAddress) { %>
         <hr />
         <h3>Submit Proof of Delivery</h3>
-        <% if (delivery.proofImage && delivery.proofImage.data) { %>
-          <div style="margin-bottom:8px;">Existing proof:</div>
-          <div style="margin-bottom:12px;"><img src="data:<%= delivery.proofImage.mimetype %>;base64,<%= delivery.proofImage.data %>" style="max-width:320px;border:1px solid #eee;padding:6px;border-radius:8px;"/></div>
-        <% } %>
         <form method="POST" action="/deliveries/<%= delivery.id %>/submit-proof" enctype="multipart/form-data">
-          <div style="margin-bottom:8px;"><label>Photo (required): <input type="file" name="proofImage" accept="image/*" required></label></div>
-          <div style="margin-bottom:8px;"><label>Remarks: <br><textarea name="remarks" rows="3" style="width:100%"><%= delivery.remarks || '' %></textarea></label></div>
-          <div style="margin-bottom:8px;"><label>Signature (optional): <input type="text" name="signature" value="<%= delivery.signature || '' %>"></label></div>
-          <div><button type="submit" class="action">Submit Proof</button></div>
+          <div style="margin-bottom:8px;"><label>Photo (required): <input type="file" name="proofImage" accept="image/*" <%= delivery.proofImage ? 'disabled' : 'required' %>></label></div>
+          <div id="new-proof-preview" style="display:none; margin-bottom:12px;">
+            <div style="margin-bottom:6px;">Preview:</div>
+            <img id="new-proof-img" alt="Selected proof preview" style="max-width:320px;border:1px solid #eee;padding:6px;border-radius:8px;" />
+          </div>
+          <div style="margin-bottom:8px;"><label>Remarks: <br><textarea name="remarks" rows="3" style="width:100%" <%= delivery.proofImage ? 'disabled' : '' %>><%= delivery.remarks || '' %></textarea></label></div>
+          <div style="margin-bottom:8px;"><label>Signature (optional): <input type="text" name="signature" value="<%= delivery.signature || '' %>" <%= delivery.proofImage ? 'disabled' : '' %>></label></div>
+          <div>
+            <button type="submit" class="action" <%= delivery.proofImage ? 'disabled' : '' %>>
+              <%= delivery.proofImage ? 'Pending' : 'Submit Proof' %>
+            </button>
+          </div>
         </form>
       <% } %>
     </div>
     <%- include('partials/footer') %>
+    <script>
+      (function() {
+        var input = document.querySelector('input[name="proofImage"]');
+        var previewWrap = document.getElementById('new-proof-preview');
+        var previewImg = document.getElementById('new-proof-img');
+        if (!input || !previewWrap || !previewImg) return;
+        input.addEventListener('change', function(e) {
+          var file = e.target && e.target.files && e.target.files[0];
+          if (!file) {
+            previewWrap.style.display = 'none';
+            previewImg.removeAttribute('src');
+            return;
+          }
+          var reader = new FileReader();
+          reader.onload = function(evt) {
+            previewImg.src = evt.target && evt.target.result ? evt.target.result : '';
+            previewWrap.style.display = previewImg.src ? 'block' : 'none';
+          };
+          reader.readAsDataURL(file);
+        });
+      })();
+    </script>
   </body>
 </html>

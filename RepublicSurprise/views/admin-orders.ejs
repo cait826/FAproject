@@ -153,6 +153,9 @@
             <tbody>
               <% orders.forEach(function(order) { %>
                 <% const relatedDeliveries = (deliveries || []).filter(function(d){ return (d.orderNumber || d.id) === order.id; }); %>
+                <% const hasAssignedDriver = relatedDeliveries.some(function(d){ return !!d.assignedTo; }); %>
+                <% const hasProof = relatedDeliveries.some(function(d){ return !!d.proofImage; }); %>
+                <% const proofDelivery = relatedDeliveries.find(function(d){ return !!d.proofImage; }) || relatedDeliveries[0]; %>
                 <tr class="order-row"
                     data-order="<%= order.id %>"
                     data-action="<%= (order.action || order.status || '').toLowerCase() %>">
@@ -191,12 +194,13 @@
                     </span>
                   </td>
                   <td>
-                    <% const showConfirm = order.status === 'Pending Delivery Confirmation'; %>
-                    <% if (showConfirm) { %>
-                      <div style="display:flex; flex-direction:column; gap:6px;">
-                        <a class="action" style="text-decoration:none; display:inline-block; text-align:center;" href="/admin/orders/check/<%= order.id %>">Confirm order</a>
-                        <small style="color:#b45309;">Review proof before confirming.</small>
-                      </div>
+                    <% const showConfirm = order.status === 'Pending Delivery Confirmation' && hasAssignedDriver && hasProof; %>
+                    <% if (showConfirm && proofDelivery) { %>
+                      <a class="action" style="text-decoration:none; display:inline-block; text-align:center;" href="/admin/delivery/<%= proofDelivery.deliveryId || proofDelivery.id %>">View proof</a>
+                    <% } else if (order.status === 'Pending Delivery Confirmation' && !hasAssignedDriver) { %>
+                      <small style="color:#5f6c7b;">Awaiting delivery assignment.</small>
+                    <% } else if (order.status === 'Pending Delivery Confirmation' && !hasProof) { %>
+                      <small style="color:#5f6c7b;">Awaiting delivery proof.</small>
                     <% } else { %>
                       <button class="action" type="button" disabled>Done</button>
                     <% } %>

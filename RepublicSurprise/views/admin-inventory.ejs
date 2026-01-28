@@ -186,7 +186,6 @@
                 <th>Description</th>
                 <th>Purchase Types</th>
                 <th>Individual</th>
-                <th>Full Set</th>
                 <th>Status</th>
                 <th>Actions</th>
               </tr>
@@ -200,19 +199,10 @@
                   <td><%= product.productDescription %></td>
                   <td>
                     <%= product.enableIndividual ? 'Individual' : '' %>
-                    <%= product.enableIndividual && product.enableSet ? ' + ' : '' %>
-                    <%= product.enableSet ? 'Full Set' : '' %>
                   </td>
                   <td>
                     <% if (product.enableIndividual) { %>
                       $<%= product.individualPrice %> / Stock: <%= product.individualStock %>
-                    <% } else { %>
-                      -
-                    <% } %>
-                  </td>
-                  <td>
-                    <% if (product.enableSet) { %>
-                      $<%= product.setPrice %> / Stock (sets): <%= product.setStock %> / Boxes per set: <%= product.setBoxes %>
                     <% } else { %>
                       -
                     <% } %>

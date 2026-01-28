@@ -158,7 +158,12 @@
                   <td><%= d.address || 'N/A' %></td>
                   <td>
                     <% const state = (d.status || '').toLowerCase(); %>
-                    <% if (state === 'out_for_delivery') { %>
+                    <% const refundState = (d.refundStatus || '').toLowerCase(); %>
+                    <% if (refundState === 'approved') { %>
+                      Refunded
+                    <% } else if (refundState === 'rejected') { %>
+                      Refund rejected
+                    <% } else if (state === 'out_for_delivery') { %>
                       Out for Delivery
                     <% } else if (state === 'delivered_pending') { %>
                       Delivered (Pending)

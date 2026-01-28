@@ -61,6 +61,7 @@
     <div class="card">
       <h1>Customer Support</h1>
       <p>Submit a ticket for refunds or issues.</p>
+      <% const safeOrders = (typeof orders !== 'undefined' && orders) ? orders : []; %>
       <% if (errorMessages && errorMessages.length) { %>
         <% errorMessages.forEach(function(msg){ %><div style="color:#b45309;"><%= msg %></div><% }) %>
       <% } %>
@@ -71,7 +72,7 @@
         <label>Order Number
           <select name="orderId" required>
             <option value="">Select your order</option>
-            <% (orders || []).forEach(function(o){ %>
+            <% safeOrders.forEach(function(o){ %>
               <option value="<%= o.id %>"><%= o.id %></option>
             <% }) %>
           </select>
@@ -97,10 +98,47 @@
         <label class="files">Proof (up to 2 images, .jpg/.png)
           <input type="file" name="attachments" accept=".jpg,.jpeg,.png" multiple />
         </label>
+        <div id="support-preview" style="display:none;">
+          <div style="font-weight:700; color:#0f172a;">Preview</div>
+          <div id="support-preview-grid" style="display:flex; gap:10px; flex-wrap:wrap; margin-top:8px;"></div>
+        </div>
         <button type="submit">Submit Ticket</button>
         <a href="/shopping" style="text-decoration:none; color:#0f172a; font-weight:700; text-align:center; padding:10px 12px; border-radius:10px; border:1px solid rgba(0,0,0,0.12); background:#fefaf2;">Back</a>
       </form>
     </div>
     <%- include('partials/footer') %>
+    <script>
+      (function() {
+        var input = document.querySelector('input[name="attachments"]');
+        var wrap = document.getElementById('support-preview');
+        var grid = document.getElementById('support-preview-grid');
+        if (!input || !wrap || !grid) return;
+        input.addEventListener('change', function(e) {
+          var files = (e.target && e.target.files) ? Array.prototype.slice.call(e.target.files, 0, 2) : [];
+          grid.innerHTML = '';
+          if (!files.length) {
+            wrap.style.display = 'none';
+            return;
+          }
+          files.forEach(function(file) {
+            var reader = new FileReader();
+            reader.onload = function(evt) {
+              var src = evt.target && evt.target.result ? evt.target.result : '';
+              if (!src) return;
+              var img = document.createElement('img');
+              img.src = src;
+              img.alt = file.name || 'Attachment preview';
+              img.style.maxWidth = '180px';
+              img.style.border = '1px solid #eee';
+              img.style.borderRadius = '8px';
+              img.style.padding = '6px';
+              grid.appendChild(img);
+              wrap.style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+          });
+        });
+      })();
+    </script>
   </body>
 </html>
