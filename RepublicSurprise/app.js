@@ -35,7 +35,7 @@ if (!contractAddress && contractMeta?.networks) {
   if (firstNetwork?.address) contractAddress = firstNetwork.address;
 }
 
-// Multer storage for uploaded pet images
+// Multer storage for uploaded product images
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, path.join(__dirname, 'public', 'images')),
   filename: (_req, file, cb) => cb(null, file.originalname)
@@ -43,13 +43,9 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 // Global state shared with views
-let account = '';
-let noOfPets = 0;
-let loading = true;
-let addObj = null;
-let addFunc = null;
-let addEnabled = null;
-let listOfPets = [];
+let catalogSyncedAt = null;
+let loading = false;
+let listOfProducts = [];
 let currentUser = null;
 const users = {};
 const carts = {};
@@ -66,13 +62,6 @@ const products = [
 app.get('/', (_req, res) => {
   // Using existing home.ejs view (no index.ejs in project)
   res.render('home', {
-    acct: account,
-    cnt: noOfPets,
-    pets: listOfPets,
-    status: loading,
-    addObject: JSON.stringify(addObj),
-    addFunction: addFunc,
-    addStatus: addEnabled,
     user: null, // header.ejs expects a user object; provide null for public home
     errorMessages: [], // flash placeholders expected by home.ejs
     successMessages: []
@@ -646,195 +635,65 @@ app.get('/contract-config', (_req, res) => {
   });
 });
 
-// Receive data fetched from smart contract via frontend Web3
-app.post('/web3ConnectData', (req, res) => {
+// Receive product data fetched from smart contract via frontend Web3
+app.post('/web3/products', (req, res) => {
+  loading = true;
   try {
-    const { petDataRead = [], contractAddress: clientAddress, acct, nPets = 0 } = req.body;
-    account = acct || '';
-    noOfPets = Number(nPets) || 0;
+    const { products: contractProducts = [], contractAddress: clientAddress, syncedAt } = req.body || {};
     if (clientAddress && !contractAddress) contractAddress = clientAddress;
+    if (!Array.isArray(contractProducts)) {
+      return res.status(400).json({ success: false, message: 'products must be an array' });
+    }
 
-    listOfPets = petDataRead.slice(0, noOfPets).map((entry, idx) => ({
-      id: idx + 1,
-      petInfo: formatPetInfo(entry.petInfo),
-      ownership: formatOwnershipInfo(entry.ownershipInfo || []),
-      vaccinations: formatVaccinationInfo(entry.vaccinationInfo || []),
-      training: formatTrainingInfo(entry.trainingInfo || [])
-    }));
+    products.length = 0;
+    contractProducts.forEach((p, idx) => {
+      products.push(normalizeProductPayload(p, idx));
+    });
+
+    listOfProducts = [...products];
+    catalogSyncedAt = syncedAt || new Date().toISOString();
     loading = false;
 
-    return res.json({ success: true, data: listOfPets, message: 'Pet data processed successfully' });
+    return res.json({ success: true, count: products.length, syncedAt: catalogSyncedAt });
   } catch (error) {
-    console.error('Error in web3ConnectData:', error);
+    loading = false;
+    console.error('Error syncing products from contract:', error);
     return res.status(500).json({ success: false, message: error.message });
   }
 });
 
 // Expose loading flag for polling from frontend
 app.get('/loading-status', (_req, res) => {
-  res.json({ loading });
+  res.json({ loading, syncedAt: catalogSyncedAt });
 });
 
-// Single pet page
-app.get('/pet/:id', (req, res) => {
-  try {
-    const petId = req.params.id;
-    const index = listOfPets.findIndex((pet) => pet.id.toString() === petId.toString());
-    if (index === -1) return res.status(404).send('Pet not found');
-    res.render('pet', { acct: account, petData: listOfPets[index], loading: false });
-  } catch (error) {
-    console.error('Error in pet route:', error);
-    res.status(500).send('Error finding pet');
-  }
-});
+// Helper to normalize contract payload into UI-friendly product shape
+function normalizeProductPayload(raw, idx = 0) {
+  const enableIndividual = raw.enableIndividual !== false;
+  const enableSet = !!raw.enableSet;
+  const badge = raw.badge || (enableSet && enableIndividual ? 'Single & Set' : enableSet ? 'Set' : 'Single box');
 
-// Add pet form
-app.get('/addPet', (_req, res) => {
-  res.render('addPet', { acct: account });
-});
+  const individualPrice =
+    Number(raw.individualPrice ?? raw.individualPriceWei ?? raw.price ?? raw.priceWei ?? 0) || 0;
+  const individualStock = Number(raw.individualStock ?? raw.stock ?? 0) || 0;
+  const setPrice = Number(raw.setPrice ?? raw.setPriceWei ?? 0) || 0;
+  const setStock = Number(raw.setStock ?? 0) || 0;
+  const setBoxes = Number(raw.setBoxes ?? 0) || 0;
 
-// Handle pet creation request from frontend (actual chain tx handled client-side)
-app.post('/addPet', upload.single('image'), (req, res) => {
-  try {
-    const { petId, name, dob, gender, price } = req.body;
-    if (!petId || !name || !dob || !gender || !price) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
-    addFunc = 'addPetInfo';
-    addEnabled = true;
-    addObj = { petId, name, dob, gender, price };
-    res.redirect('/');
-  } catch (error) {
-    console.error('Error in pet registration:', error);
-    res.status(500).send('Error adding pet');
-  }
-});
-
-// Reset action flag after frontend processes tx
-app.post('/setFunc', (_req, res) => {
-  addEnabled = null;
-  res.json({ success: true, message: 'set data successfully' });
-});
-
-app.get('/addVaccination/:id', (req, res) => {
-  res.render('addVaccination', { acct: account, petId: req.params.id });
-});
-
-app.post('/addVaccination', (req, res) => {
-  try {
-    const { vaccine, dateOfVaccine, doctor, clinic, contact, emailId, petId } = req.body;
-    if (!petId || !vaccine || !dateOfVaccine || !doctor || !clinic || !contact || !emailId) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
-    addFunc = 'addVaccination';
-    addEnabled = true;
-    addObj = { petId, vaccine, dateOfVaccine, doctor, clinic, contact, emailId };
-    res.redirect('/');
-  } catch (error) {
-    console.error('Error adding vaccination:', error);
-    res.status(500).send('Error adding pet vaccine');
-  }
-});
-
-app.get('/addTraining/:id', (req, res) => {
-  res.render('addTraining', { acct: account, petId: req.params.id });
-});
-
-app.post('/addTraining', (req, res) => {
-  try {
-    const { trainingType, name, org, trainingDate, contact, progress, petId } = req.body;
-    if (!petId || !name || !org || !trainingDate || !contact || !progress || !trainingType) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
-    addFunc = 'addTraining';
-    addEnabled = true;
-    addObj = { petId, name, org, trainingDate, contact, progress, trainingType };
-    res.redirect('/');
-  } catch (error) {
-    console.error('Error adding training:', error);
-    res.status(500).send('Error adding pet training');
-  }
-});
-
-app.get('/addOwner/:id', (req, res) => {
-  res.render('addOwner', { acct: account, petId: req.params.id });
-});
-
-app.post('/addOwner', (req, res) => {
-  try {
-    const { ownerId, name, transferDate, contact, emailId, petId } = req.body;
-    if (!petId || !name || !ownerId || !transferDate || !contact || !emailId) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
-    addFunc = 'addOwner';
-    addEnabled = true;
-    addObj = { petId, name, ownerId, transferDate, contact, emailId };
-    res.redirect('/');
-  } catch (error) {
-    console.error('Error adding pet owner:', error);
-    res.status(500).send('Error adding pet owner');
-  }
-});
-
-app.post('/buyPet/:id', (req, res) => {
-  try {
-    const petId = req.params.id;
-    const { petCost } = req.body;
-    if (!petId || !petCost) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
-    addFunc = 'buyPet';
-    addEnabled = true;
-    addObj = { petId, petCost };
-    res.redirect('/');
-  } catch (error) {
-    console.error('Error in buyPet:', error);
-    res.status(500).send('Error buying pet');
-  }
-});
-
-// Helper formatting functions
-function formatPetInfo(petInfo = []) {
-  return {
-    id: petInfo[0],
-    name: petInfo[1],
-    dateOfBirth: petInfo[2],
-    gender: petInfo[3],
-    price: petInfo[4],
-    status: petInfo[5]
-  };
-}
-
-function formatOwnershipInfo(ownershipInfo = []) {
-  return ownershipInfo.map((record) => ({
-    ownerId: record[0],
-    ownerName: record[1],
-    transferDate: record[2],
-    phone: record[3],
-    email: record[4]
-  }));
-}
-
-function formatVaccinationInfo(vaccinationInfo = []) {
-  return vaccinationInfo.map((record) => ({
-    vaccineName: record[0],
-    dateAdministered: record[1],
-    doctorname: record[2],
-    clinic: record[3],
-    phone: record[4],
-    email: record[5]
-  }));
-}
-
-function formatTrainingInfo(trainingInfo = []) {
-  return trainingInfo.map((record) => ({
-    trainingType: record[0],
-    traninerName: record[1],
-    organization: record[2],
-    phone: record[3],
-    trainingDate: record[4],
-    progress: record[5]
-  }));
+  return seedProduct(
+    raw.id || raw.productId || `prod-${idx + 1}`,
+    raw.name || raw.productName || `Product ${idx + 1}`,
+    individualPrice || setPrice,
+    individualStock || setStock,
+    badge,
+    raw.image || '/images/lolo_the_piggy.png',
+    raw.description || raw.productDescription || '',
+    enableIndividual,
+    enableSet,
+    setPrice,
+    setStock,
+    setBoxes
+  );
 }
 
 // Start server
