@@ -67,6 +67,10 @@ const DELIVERY_STATUS = {
 };
 const deliveryProofUpload = multer({ storage: multer.memoryStorage() });
 
+function isDeliveryUser(user) {
+  return (user?.role || '').toLowerCase() === 'delivery man';
+}
+
 // Home page
 app.get('/', (_req, res) => {
   // Using existing home.ejs view (no index.ejs in project)
@@ -154,6 +158,7 @@ app.post('/logout', (_req, res) => {
 // Minimal user home route
 app.get('/user/home', (_req, res) => {
   if (!currentUser) return res.redirect('/login');
+  if (isDeliveryUser(currentUser)) return res.redirect('/delivery/dashboard');
   res.render('user-home', {
     user: currentUser,
     errorMessages: [],
@@ -173,6 +178,7 @@ app.get('/user/profile', (_req, res) => {
 
 app.get('/shopping', (_req, res) => {
   if (!currentUser) return res.redirect('/login');
+  if (isDeliveryUser(currentUser)) return res.redirect('/delivery/dashboard');
   const cart = carts[currentUser.walletAddress?.toLowerCase()] || [];
   const cartCount = cart.reduce((sum, item) => sum + Number(item.qty || 0), 0);
   res.render('user-shopping', {
@@ -187,6 +193,7 @@ app.get('/shopping', (_req, res) => {
 
 app.get('/cart', (_req, res) => {
   if (!currentUser) return res.redirect('/login');
+  if (isDeliveryUser(currentUser)) return res.redirect('/delivery/dashboard');
   const cart = carts[currentUser.walletAddress?.toLowerCase()] || [];
   const totals = getCartTotals(cart);
   res.render('cart', {
@@ -426,6 +433,9 @@ app.post('/cart/add', (req, res) => {
   if (!currentUser) {
     return res.status(401).json({ redirect: '/login' });
   }
+  if (isDeliveryUser(currentUser)) {
+    return res.status(403).json({ error: 'Delivery accounts cannot use the cart.' });
+  }
   const { id, name, price, qty } = req.body || {};
   const wallet = currentUser.walletAddress?.toLowerCase();
   if (!wallet || !id) return res.status(400).json({ error: 'Invalid cart payload' });
@@ -443,6 +453,9 @@ app.post('/cart/add', (req, res) => {
 
 app.post('/cart/update', (req, res) => {
   if (!currentUser) return res.status(401).json({ redirect: '/login' });
+  if (isDeliveryUser(currentUser)) {
+    return res.status(403).json({ error: 'Delivery accounts cannot use the cart.' });
+  }
   const { id, qty } = req.body || {};
   const wallet = currentUser.walletAddress?.toLowerCase();
   const cart = carts[wallet] || [];
@@ -458,6 +471,9 @@ app.post('/cart/update', (req, res) => {
 
 app.post('/cart/remove/:id', (req, res) => {
   if (!currentUser) return res.status(401).json({ redirect: '/login' });
+  if (isDeliveryUser(currentUser)) {
+    return res.status(403).json({ error: 'Delivery accounts cannot use the cart.' });
+  }
   const wallet = currentUser.walletAddress?.toLowerCase();
   const cart = carts[wallet] || [];
   carts[wallet] = cart.filter((p) => String(p.id) !== String(req.params.id));
@@ -468,6 +484,9 @@ app.post('/cart/remove/:id', (req, res) => {
 
 app.post('/cart/clear', (req, res) => {
   if (!currentUser) return res.status(401).json({ redirect: '/login' });
+  if (isDeliveryUser(currentUser)) {
+    return res.status(403).json({ error: 'Delivery accounts cannot use the cart.' });
+  }
   const wallet = currentUser.walletAddress?.toLowerCase();
   carts[wallet] = [];
   return respondCart(req, res, { success: true, cartCount: 0, totals: getCartTotals([]) });
@@ -581,6 +600,34 @@ function createOrderFromCart(user, cart) {
   return order;
 }
 
+function createDemoOrderForDelivery(deliveryUser) {
+  const nextId = orders.length + 1;
+  const orderId = `ORD-${String(nextId).padStart(4, '0')}`;
+  const product = products[0] || { name: 'Demo Item', price: 10 };
+  const order = {
+    id: orderId,
+    product: product.name || 'Demo Item',
+    customer: (deliveryUser.walletAddress || '').toLowerCase() || '0xdemo',
+    customerName: 'Demo Customer',
+    address: 'Demo Address',
+    contact: 'Demo Contact',
+    price: Number(product.price || 0),
+    qty: 1,
+    status: 'Pending',
+    action: 'demo delivery seed',
+    auditLog: [
+      {
+        action: 'Demo order created',
+        timestamp: new Date().toISOString(),
+        function: 'createDemoOrderForDelivery',
+        txHash: '0xDEMO'
+      }
+    ]
+  };
+  orders.push(order);
+  return order;
+}
+
 function createDemoDelivery(order, user) {
   const nextId = deliveries.length ? deliveries.length + 1 : 1;
   const assignedTo =
@@ -657,7 +704,18 @@ function seedProduct(
 // Payment page (stub)
 app.get('/payment', (_req, res) => {
   if (!currentUser) return res.redirect('/login');
+  if (isDeliveryUser(currentUser)) return res.redirect('/delivery/dashboard');
   const cart = carts[currentUser.walletAddress?.toLowerCase()] || [];
+  if (!cart.length) {
+    return res.render('cart', {
+      user: currentUser,
+      errorMessages: ['Your cart is empty. Add items before proceeding to payment.'],
+      successMessages: [],
+      items: cart,
+      cart,
+      totals: getCartTotals(cart)
+    });
+  }
   const totals = getCartTotals(cart);
   res.render('payment', {
     user: currentUser,
@@ -671,6 +729,7 @@ app.get('/payment', (_req, res) => {
 // Invoice page stub
 app.get('/invoice', (_req, res) => {
   if (!currentUser) return res.redirect('/login');
+  if (isDeliveryUser(currentUser)) return res.redirect('/delivery/dashboard');
   const cart = carts[currentUser.walletAddress?.toLowerCase()] || [];
   const totals = getCartTotals(cart);
   res.render('invoice', {
@@ -867,6 +926,13 @@ app.get('/demo/seed-order', (req, res) => {
 </html>`);
 });
 
+app.get('/delivery/demo-seed', (_req, res) => {
+  if (!currentUser || currentUser.role !== 'delivery man') return res.redirect('/login');
+  const order = createDemoOrderForDelivery(currentUser);
+  createDemoDelivery(order, currentUser);
+  res.redirect('/delivery/dashboard');
+});
+
 app.get('/admin/users', (_req, res) => {
   if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
   res.render('admin-users', {
@@ -1021,6 +1087,7 @@ app.get('/admin/product/:id', (req, res) => {
 // Product detail
 app.get('/product', (req, res) => {
   if (!currentUser) return res.redirect('/login');
+  if (isDeliveryUser(currentUser)) return res.redirect('/delivery/dashboard');
   const id = req.query.id;
   const product = products.find((p) => String(p.id) === String(id));
   if (!product) return res.status(404).send('Product not found');
