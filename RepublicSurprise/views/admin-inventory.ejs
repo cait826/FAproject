@@ -184,7 +184,7 @@
               <tr>
                 <th>Product Name</th>
                 <th>Description</th>
-                <th>Individual</th>
+                <th>Details</th>
                 <th>Status</th>
                 <th>Actions</th>
               </tr>
@@ -193,12 +193,9 @@
               <% products.forEach(function(product) { %>
                 <tr>
                   <td>
-                    <a href="/admin/product/<%= product.id %>"><%= product.productName %></a>
+                    <%= product.productName %>
                   </td>
                   <td><%= product.productDescription %></td>
-                  <td>
-                    <%= product.enableIndividual ? 'Individual' : '-' %>
-                  </td>
                   <td>
                     <% if (product.enableIndividual) { %>
                       $<%= product.individualPrice %> / Stock: <%= product.individualStock %>

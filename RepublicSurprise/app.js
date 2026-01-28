@@ -1071,11 +1071,10 @@ app.post('/admin/add-product', upload.any(), (req, res) => {
     productDescription,
     priceWei,
     individualPrice,
-    individualStock,
-    enableIndividual
+    individualStock
   } = req.body || {};
   const nextId = products.length ? products.length + 1 : 1;
-  const enableIndividualBool = enableIndividual === 'on' || enableIndividual === true || enableIndividual === 'true';
+  const enableIndividualBool = true;
   const indivPriceNum = Number(individualPrice || 0) || 0;
   const indivStockNum = Number(individualStock || 0) || 0;
   const badge = 'Single box';
@@ -1397,21 +1396,6 @@ app.post('/admin/reactivate-product/:id', (req, res) => {
     recordProductAudit(product, currentUser?.walletAddress || 'admin', 'Product reactivated', before, { ...product });
   }
   res.redirect('/admin/inventory');
-});
-
-// Admin product detail view used by inventory links
-app.get('/admin/product/:id', (req, res) => {
-  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
-  const id = req.params.id;
-  const product = products.find((p) => String(p.id) === String(id));
-  if (!product) return res.status(404).send('Product not found');
-  res.render('admin-product-history', {
-    user: currentUser,
-    product,
-    history: product.auditLog || [],
-    errorMessages: [],
-    successMessages: []
-  });
 });
 
 // Product detail

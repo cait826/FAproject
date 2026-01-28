@@ -136,14 +136,9 @@ contract RepublicSurpriseContract {
     mapping(uint256 => Product) public products;
     mapping(uint256 => RepublicSurpriseStatus) public productInventoryStatus;
 
-    // ---------- Product Audit (events only) ----------
+    // ---------- Product Events ----------
     event ProductAdded(uint256 indexed id, string name, uint256 priceWei, bool enableIndividual, bool enableSet);
     event ProductStatusChanged(uint256 indexed id, ProductStatus status);
-    event ProductAuditLogged(uint256 indexed id, string action, address indexed actor, uint256 timestamp, bytes32 dataHash);
-
-    function _logProductAudit(uint256 id, string memory action, bytes32 dataHash) internal {
-        emit ProductAuditLogged(id, action, msg.sender, block.timestamp, dataHash);
-    }
 
     function _validateBlindBoxConfig(
         bool enableIndividual,
@@ -234,11 +229,6 @@ contract RepublicSurpriseContract {
         RepublicSurpriseCount = productCount;
 
         _updateInventoryStatus(id);
-        bytes32 dataHash = keccak256(
-            abi.encode(id, name, description, priceWei, enableIndividual, enableSet, individualPriceWei, individualStock, setPriceWei, setStock, setBoxes)
-        );
-        _logProductAudit(id, "ADD_PRODUCT", dataHash);
-
         emit ProductAdded(id, name, priceWei, enableIndividual, enableSet);
     }
 
@@ -246,7 +236,6 @@ contract RepublicSurpriseContract {
         require(products[id].id != 0, "Product not found");
         products[id].status = ProductStatus.Inactive;
 
-        _logProductAudit(id, "DEACTIVATE_PRODUCT", keccak256(abi.encode(id, "DEACTIVATE_PRODUCT")));
         emit ProductStatusChanged(id, ProductStatus.Inactive);
     }
 
@@ -254,7 +243,6 @@ contract RepublicSurpriseContract {
         require(products[id].id != 0, "Product not found");
         products[id].status = ProductStatus.Active;
 
-        _logProductAudit(id, "REACTIVATE_PRODUCT", keccak256(abi.encode(id, "REACTIVATE_PRODUCT")));
         emit ProductStatusChanged(id, ProductStatus.Active);
     }
 
@@ -303,11 +291,6 @@ contract RepublicSurpriseContract {
         users[user].active = true;
         emit UserStatusChanged(user, true);
         emit UserAuditLogged(user, "REACTIVATE", msg.sender, users[user].profileHash, true, block.timestamp);
-    }
-
-    function logProductAudit(uint256 id, string calldata action) external onlyAdmin {
-        require(products[id].id != 0, "Product not found");
-        _logProductAudit(id, action, keccak256(abi.encode(id, action)));
     }
 
     function logUserAudit(address user, string calldata action) external onlyAdmin {
