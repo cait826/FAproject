@@ -1110,7 +1110,7 @@ app.post('/admin/add-product', upload.any(), (req, res) => {
   res.render('admin-add-product', {
     user: currentUser,
     errorMessages: [],
-    successMessages: ['Product added (demo, not persisted)']
+    successMessages: ['Product added']
   });
 });
 
