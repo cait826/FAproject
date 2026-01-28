@@ -59,6 +59,7 @@
           <div><strong>Status:</strong> <span id="ticket-status"></span></div>
           <div><strong>Reason:</strong> <span id="ticket-reason"></span></div>
           <div><strong>Details:</strong> <span id="ticket-desc"></span></div>
+          <div id="ticket-reject-row" style="display:none;"><strong>Rejection Reason:</strong> <span id="ticket-reject"></span></div>
           <div id="ticket-wallet-row" style="display:none;"><strong>Refunded Wallet:</strong> <span id="ticket-wallet"></span></div>
           <div id="ticket-resolved-row" style="display:none;"><strong>Resolved:</strong> <span id="ticket-resolved"></span></div>
           <div id="ticket-attachments" style="display:none; margin-top:8px;">
@@ -125,11 +126,18 @@
     });
 
     const ticketCard = $('ticket-card');
-    if (ticketCard && data.ticket && (data.ticket.status === 'Approved' || data.ticket.status === 'Rejected')) {
+    if (ticketCard && data.ticket) {
       $('ticket-id').textContent = data.ticket.id || '';
       $('ticket-status').textContent = data.ticket.status || '';
       $('ticket-reason').textContent = data.ticket.reason || '';
       $('ticket-desc').textContent = data.ticket.description || '-';
+      const rejectRow = $('ticket-reject-row');
+      if (data.ticket.rejectionReason) {
+        $('ticket-reject').textContent = data.ticket.rejectionReason;
+        rejectRow.style.display = 'block';
+      } else {
+        rejectRow.style.display = 'none';
+      }
       const walletRow = $('ticket-wallet-row');
       if (data.ticket.refundedWallet) {
         $('ticket-wallet').textContent = data.ticket.refundedWallet;

@@ -90,6 +90,7 @@
       .pill.open { background: rgba(255,159,28,0.15); color: #b45309; }
       .pill.review { background: rgba(46,196,182,0.18); color: #0b3b35; }
       .pill.approved { background: rgba(34,197,94,0.2); color: #14532d; }
+      .pill.rejected { background: rgba(248,113,113,0.2); color: #7f1d1d; }
       header, footer {
         position: fixed;
         left: 0;
@@ -138,18 +139,15 @@
                   <td>$<%= Number(t.amount || 0).toFixed(2) %></td>
                   <td><%= t.type %> refund</td>
                   <td>
-                    <% const pillClass = t.status === 'Open' ? 'open' : t.status === 'Approved' ? 'approved' : 'review'; %>
-                    <span class="pill <%= pillClass %>"><%= t.status %></span>
-                  </td>
-                  <td>
-                    <form method="get" action="/admin/customer-service/approve/<%= t.id %>">
-                      <button class="action" type="submit" <%= t.status === 'Approved' ? 'disabled' : '' %>>Approve</button>
-                    </form>
-                    <form method="post" action="/admin/customer-service/reject/<%= t.id %>" style="margin-top:6px;">
-                      <button class="action" type="submit" <%= t.status === 'Rejected' ? 'disabled' : '' %>>Reject</button>
-                    </form>
-                  </td>
-                </tr>
+                  <% const pillClass = t.status === 'Pending Approval' ? 'open' : t.status === 'Refund Accepted' ? 'approved' : t.status === 'Refund Rejected' ? 'rejected' : 'review'; %>
+                  <span class="pill <%= pillClass %>"><%= t.status %></span>
+                </td>
+                <td>
+                  <a class="action" style="text-decoration:none; display:inline-block;" href="/admin/customer-service/<%= t.id %>">
+                    Review
+                  </a>
+                </td>
+              </tr>
               <% }) %>
             </tbody>
           </table>

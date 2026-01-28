@@ -9,8 +9,8 @@ const { Web3 } = require('web3');
 const app = express();
 const PORT = process.env.PORT || 3001;
 app.set('view engine', 'ejs');
-app.set('views', path.join(__dirname, 'views'));
-app.use(express.static(path.join(__dirname, 'public')));
+app.set('views', path.join(__dirname, 'RepublicSurprise', 'views'));
+app.use(express.static(path.join(__dirname, 'RepublicSurprise', 'public')));
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 app.use(
@@ -55,10 +55,14 @@ if (!contractAddress && contractMeta?.networks) {
 
 // Multer storage for uploaded product images
 const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, path.join(__dirname, 'public', 'images')),
+  destination: (_req, _file, cb) => cb(null, path.join(__dirname, 'RepublicSurprise', 'public', 'images')),
   filename: (_req, file, cb) => cb(null, file.originalname)
 });
 const upload = multer({ storage });
+const supportUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 4 * 1024 * 1024, files: 1 }
+});
 
 // Global state shared with views
 let catalogSyncedAt = null;
@@ -87,6 +91,14 @@ products.forEach((product) => {
 });
 const deliveries = [];
 const orders = [];
+const tickets = [];
+const supportReasons = [
+  'Damaged Item',
+  'Cancelled Order',
+  'Wrong Item',
+  'Missing Items',
+  'Other'
+];
 const DELIVERY_STATUS = {
   PENDING: 'pending',
   OUT_FOR_DELIVERY: 'out_for_delivery',
@@ -253,6 +265,106 @@ app.get('/order-tracking', (_req, res) => {
     errorMessages: [],
     successMessages: [],
     orders: getOrdersForUser(currentUser)
+  });
+});
+
+app.get('/support', (_req, res) => {
+  if (!currentUser) return res.redirect('/login');
+  if (isDeliveryUser(currentUser)) return res.redirect('/delivery/dashboard');
+  res.render('support', {
+    user: currentUser,
+    orders: getOrdersForUser(currentUser),
+    reasons: supportReasons,
+    errorMessages: [],
+    successMessages: []
+  });
+});
+
+app.post('/support', (req, res) => {
+  if (!currentUser) return res.redirect('/login');
+  if (isDeliveryUser(currentUser)) return res.redirect('/delivery/dashboard');
+
+  supportUpload.single('attachment')(req, res, (err) => {
+    const renderError = (messages) => res.status(400).render('support', {
+      user: currentUser,
+      orders: getOrdersForUser(currentUser),
+      reasons: supportReasons,
+      errorMessages: Array.isArray(messages) ? messages : [messages],
+      successMessages: []
+    });
+
+    if (err) {
+      return renderError(err.message || 'Unable to upload attachment.');
+    }
+
+    const { orderId, reason, description } = req.body || {};
+    const normalizedReason = String(reason || '').trim();
+    const trimmedDescription = String(description || '').trim();
+    const selectedOrder = orders.find((o) => String(o.id) === String(orderId));
+    const wallet = (currentUser.walletAddress || '').toLowerCase();
+
+    if (!orderId || !selectedOrder) {
+      return renderError('Please choose a valid order.');
+    }
+    if ((selectedOrder.customer || '').toLowerCase() !== wallet) {
+      return renderError('You can only submit tickets for your own orders.');
+    }
+    if (!normalizedReason || !supportReasons.includes(normalizedReason)) {
+      return renderError('Please select a valid reason.');
+    }
+    if (!trimmedDescription) {
+      return renderError('Please add a short description of the issue.');
+    }
+
+    const file = req.file;
+    if (!file) {
+      return renderError('Proof image is required (.jpg or .png).');
+    }
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg'];
+    if (!allowedTypes.includes(file.mimetype)) {
+      return renderError('Only .jpg or .png files are allowed.');
+    }
+
+    const existing = getTicketByOrderId(selectedOrder.id);
+    if (existing && !['Refund Rejected', 'Refund Accepted'].includes(existing.status)) {
+      return renderError('There is already an open ticket for this order.');
+    }
+
+    const nextId = tickets.length + 1;
+    const ticketId = `TCK-${String(nextId).padStart(4, '0')}`;
+    const ticket = {
+      id: ticketId,
+      orderId: selectedOrder.id,
+      customer: wallet,
+      reason: normalizedReason,
+      description: trimmedDescription,
+      status: 'Pending Approval',
+      type: 'Pending',
+      amount: Number(selectedOrder.price || 0),
+      createdAt: new Date().toISOString(),
+      resolvedAt: '',
+      refundTx: '',
+      refundedWallet: '',
+      rejectionReason: '',
+      attachments: [
+        {
+          name: file.originalname || 'proof',
+          data: file.buffer.toString('base64'),
+          mimetype: file.mimetype
+        }
+      ]
+    };
+    tickets.push(ticket);
+    selectedOrder.ticketId = ticketId;
+    selectedOrder.refundStatus = ticket.status;
+
+    return res.render('support', {
+      user: currentUser,
+      orders: getOrdersForUser(currentUser),
+      reasons: supportReasons,
+      errorMessages: [],
+      successMessages: ['Your complaint has been submitted.']
+    });
   });
 });
 
@@ -545,6 +657,14 @@ function respondCart(req, res, payload) {
 function getOrdersForUser(user) {
   const wallet = (user?.walletAddress || '').toLowerCase();
   return orders.filter((order) => (order.customer || '').toLowerCase() === wallet);
+}
+
+function getTicketByOrderId(orderId) {
+  return tickets.find((ticket) => String(ticket.orderId) === String(orderId));
+}
+
+function getTicketById(id) {
+  return tickets.find((ticket) => String(ticket.id) === String(id));
 }
 
 function getDriversMap() {
@@ -850,13 +970,27 @@ app.get('/order-status/:id', (req, res) => {
   };
   let statusLabel = statusMap[delivery?.status] || order?.status || 'Pending';
   let status = delivery?.status || order?.status || 'pending';
+  const ticket = getTicketByOrderId(delivery?.orderNumber || order?.id || id);
   return res.json({
     success: true,
     orderId: delivery?.orderNumber || order?.id || id,
     status,
     statusLabel,
     updatedAt: delivery?.updatedAt || delivery?.timestamp || order?.updatedAt || '',
-    ticket: null
+    ticket: ticket ? {
+      id: ticket.id,
+      orderId: ticket.orderId,
+      customer: ticket.customer,
+      reason: ticket.reason,
+      description: ticket.description,
+      status: ticket.status,
+      type: ticket.type,
+      amount: ticket.amount,
+      resolvedAt: ticket.resolvedAt,
+      refundedWallet: ticket.refundedWallet,
+      rejectionReason: ticket.rejectionReason,
+      attachments: ticket.attachments
+    } : null
   });
 });
 
@@ -935,6 +1069,91 @@ app.get('/admin/dashboard', (_req, res) => {
     errorMessages: [],
     successMessages: []
   });
+});
+
+app.get('/admin/customer-service', (_req, res) => {
+  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
+  const ordered = tickets.slice().sort((a, b) => {
+    return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+  });
+  res.render('admin-customer-service', {
+    user: currentUser,
+    tickets: ordered,
+    errorMessages: [],
+    successMessages: []
+  });
+});
+
+app.get('/admin/customer-service/:id', (req, res) => {
+  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
+  const ticket = getTicketById(req.params.id);
+  if (!ticket) return res.status(404).send('Ticket not found');
+  const order = orders.find((item) => String(item.id) === String(ticket.orderId));
+  res.render('admin-customer-service-detail', {
+    user: currentUser,
+    ticket,
+    order,
+    errorMessages: [],
+    successMessages: []
+  });
+});
+
+app.post('/admin/customer-service/:id', (req, res) => {
+  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
+  const ticket = getTicketById(req.params.id);
+  if (!ticket) return res.status(404).send('Ticket not found');
+  const order = orders.find((item) => String(item.id) === String(ticket.orderId));
+  const action = String(req.body?.action || '').toLowerCase();
+  const refundType = String(req.body?.refundType || '').trim();
+  const rejectionReason = String(req.body?.rejectionReason || '').trim();
+
+  const renderDetail = (messages, status = 400) => res.status(status).render('admin-customer-service-detail', {
+    user: currentUser,
+    ticket,
+    order,
+    errorMessages: Array.isArray(messages) ? messages : [messages],
+    successMessages: []
+  });
+
+  if (!refundType || !['Full', 'Partial'].includes(refundType)) {
+    return renderDetail('Please select a refund type.');
+  }
+
+  if (ticket.status === 'Refund Accepted' || ticket.status === 'Refund Rejected') {
+    return renderDetail('This ticket has already been resolved.');
+  }
+
+  if (action === 'reject' && !rejectionReason) {
+    return renderDetail('Please provide a rejection reason before rejecting.');
+  }
+
+  ticket.type = refundType;
+  ticket.resolvedAt = new Date().toISOString();
+
+  if (action === 'approve') {
+    ticket.status = 'Refund Accepted';
+    ticket.refundedWallet = ticket.customer;
+    ticket.refundTx = ticket.refundTx || '0xDEMOREFUND';
+  } else if (action === 'reject') {
+    ticket.status = 'Refund Rejected';
+    ticket.rejectionReason = rejectionReason;
+  } else {
+    return renderDetail('Invalid action.');
+  }
+
+  if (order) {
+    order.refundStatus = ticket.status;
+    order.ticketId = ticket.id;
+    order.auditLog = order.auditLog || [];
+    order.auditLog.push({
+      action: `Refund ${action === 'approve' ? 'accepted' : 'rejected'}`,
+      timestamp: new Date().toISOString(),
+      function: 'resolveRefund',
+      txHash: ticket.refundTx || '0xDEMO'
+    });
+  }
+
+  res.redirect(`/admin/customer-service/${ticket.id}`);
 });
 
 app.get('/admin/inventory', (_req, res) => {
@@ -1024,11 +1243,12 @@ app.get('/admin/orders/:id', (req, res) => {
   const delivery = deliveries.find(
     (item) => String(item.orderNumber || item.id) === String(order.id)
   );
+  const ticket = getTicketByOrderId(order.id);
   res.render('admin-order-detail', {
     user: currentUser,
     order,
     delivery,
-    ticket: null,
+    ticket,
     errorMessages: [],
     successMessages: []
   });

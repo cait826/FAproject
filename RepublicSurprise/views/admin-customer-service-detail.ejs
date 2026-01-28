@@ -65,10 +65,17 @@
     <%- include('partials/header') %>
     <div class="page card">
       <h1>Ticket <%= ticket.id %></h1>
+      <% if (errorMessages && errorMessages.length) { %>
+        <% errorMessages.forEach(function(msg){ %><div style="color:#b45309;"><%= msg %></div><% }) %>
+      <% } %>
+      <% if (successMessages && successMessages.length) { %>
+        <% successMessages.forEach(function(msg){ %><div style="color:#15803d;"><%= msg %></div><% }) %>
+      <% } %>
       <div class="row"><div class="label">Order ID</div><div><%= ticket.orderId %></div></div>
       <div class="row"><div class="label">Customer Wallet</div><div><%= ticket.customer %></div></div>
       <div class="row"><div class="label">Reason</div><div><%= ticket.reason || '-' %></div></div>
       <div class="row"><div class="label">Status</div><div><%= ticket.status || '-' %></div></div>
+      <div class="row"><div class="label">Refund Type</div><div><%= ticket.type || '-' %></div></div>
       <div class="row"><div class="label">Amount</div><div>$<%= Number(ticket.amount || 0).toFixed(2) %></div></div>
       <% if (ticket.description) { %>
         <div class="row"><div class="label">Details</div><div><%= ticket.description %></div></div>
@@ -81,6 +88,9 @@
       <% } %>
       <% if (ticket.refundedWallet) { %>
         <div class="row"><div class="label">Refunded Wallet</div><div><%= ticket.refundedWallet %></div></div>
+      <% } %>
+      <% if (ticket.rejectionReason) { %>
+        <div class="row"><div class="label">Rejection Reason</div><div><%= ticket.rejectionReason %></div></div>
       <% } %>
       <% if (order) { %>
         <div class="row"><div class="label">Order Status</div><div><%= order.status %></div></div>
@@ -97,11 +107,49 @@
           </div>
         </div>
       <% } %>
+      <form method="post" action="/admin/customer-service/<%= ticket.id %>" style="margin-top:18px; display:grid; gap:10px;">
+        <label style="display:flex; flex-direction:column; gap:6px; font-weight:600; color:var(--muted);">
+          Refund Type
+          <select name="refundType" id="refundType" required style="padding:10px 12px; border-radius:12px; border:1px solid rgba(0,0,0,0.12); background:#fefaf2;">
+            <option value="">Select type</option>
+            <option value="Full" <%= ticket.type === 'Full' ? 'selected' : '' %>>Full</option>
+            <option value="Partial" <%= ticket.type === 'Partial' ? 'selected' : '' %>>Partial</option>
+          </select>
+        </label>
+        <label style="display:flex; flex-direction:column; gap:6px; font-weight:600; color:var(--muted);">
+          Rejection Reason (required if rejecting)
+          <textarea name="rejectionReason" id="rejectionReason" maxlength="300" style="padding:10px 12px; border-radius:12px; border:1px solid rgba(0,0,0,0.12); background:#fefaf2; min-height:90px;"></textarea>
+        </label>
+        <div class="actions">
+          <button class="action" type="submit" name="action" value="approve" <%= ticket.status === 'Refund Accepted' ? 'disabled' : '' %>>Accept</button>
+          <button class="action" type="submit" name="action" value="reject" <%= ticket.status === 'Refund Rejected' ? 'disabled' : '' %>>Reject</button>
+        </div>
+      </form>
       <div class="actions">
         <a class="action" href="/admin/customer-service">Back to Customer Service</a>
         <a class="action" href="/admin/orders">Back to Orders</a>
       </div>
     </div>
     <%- include('partials/footer') %>
+    <script>
+      (function() {
+        var form = document.querySelector('form[action^="/admin/customer-service/"]');
+        var refundType = document.getElementById('refundType');
+        var rejection = document.getElementById('rejectionReason');
+        if (!form || !refundType || !rejection) return;
+        form.addEventListener('submit', function(e) {
+          var action = (document.activeElement && document.activeElement.value) || '';
+          if (!refundType.value) {
+            e.preventDefault();
+            alert('Select a refund type before submitting.');
+            return;
+          }
+          if (action === 'reject' && !rejection.value.trim()) {
+            e.preventDefault();
+            alert('Please provide a rejection reason.');
+          }
+        });
+      })();
+    </script>
   </body>
 </html>

@@ -192,6 +192,9 @@
                     <span class="pill <%= order.status === 'Confirmed' || order.status === 'Completed' ? 'confirmed' : 'pending' %>">
                       <%= order.status %>
                     </span>
+                    <% if (order.refundStatus) { %>
+                      <div style="font-size:0.75rem; color:#6b7280; margin-top:4px;">Refund: <%= order.refundStatus %></div>
+                    <% } %>
                   </td>
                   <td>
                     <% const showConfirm = order.status === 'Pending Delivery Confirmation' && hasAssignedDriver && hasProof; %>

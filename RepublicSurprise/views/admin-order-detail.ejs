@@ -98,13 +98,17 @@
         <div class="row"><div class="label">Ticket ID</div><div><%= ticket.id %></div></div>
         <div class="row"><div class="label">Reason</div><div><%= ticket.reason || '-' %></div></div>
         <div class="row"><div class="label">Status</div><div><%= ticket.status || '-' %></div></div>
+        <div class="row"><div class="label">Refund Type</div><div><%= ticket.type || '-' %></div></div>
         <% if (ticket.description) { %>
           <div class="row"><div class="label">Details</div><div><%= ticket.description %></div></div>
         <% } %>
         <% if (ticket.resolvedAt) { %>
           <div class="row"><div class="label">Resolved</div><div><%= ticket.resolvedAt %></div></div>
         <% } %>
-        <% if ((ticket.status === 'Approved' || ticket.status === 'Rejected') && ticket.attachments && ticket.attachments.length) { %>
+        <% if (ticket.rejectionReason) { %>
+          <div class="row"><div class="label">Rejection Reason</div><div><%= ticket.rejectionReason %></div></div>
+        <% } %>
+        <% if (ticket.attachments && ticket.attachments.length) { %>
           <div style="margin-top:12px;">
             <div class="label">Attachments</div>
             <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:8px;">

@@ -1,5 +1,5 @@
-const PetContract = artifacts.require("PetContract");
-module.exports = function(deployer){
-    deployer.deploy(PetContract);
-};
+const RepublicSurpriseContract = artifacts.require("RepublicSurpriseContract");
 
+module.exports = function(deployer) {
+  deployer.deploy(RepublicSurpriseContract);
+};
