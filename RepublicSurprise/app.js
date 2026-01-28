@@ -87,11 +87,6 @@ products.forEach((product) => {
 });
 const deliveries = [];
 const orders = [];
-const tickets = [];
-const REFUND_STATUS = {
-  APPROVED: 'approved',
-  REJECTED: 'rejected'
-};
 const DELIVERY_STATUS = {
   PENDING: 'pending',
   OUT_FOR_DELIVERY: 'out_for_delivery',
@@ -258,17 +253,6 @@ app.get('/order-tracking', (_req, res) => {
     errorMessages: [],
     successMessages: [],
     orders: getOrdersForUser(currentUser)
-  });
-});
-
-app.get('/support', (_req, res) => {
-  if (!currentUser) return res.redirect('/login');
-  const userOrders = getOrdersForUser(currentUser);
-  res.render('support', {
-    user: currentUser,
-    orders: userOrders,
-    errorMessages: [],
-    successMessages: []
   });
 });
 
@@ -442,77 +426,6 @@ app.post('/delivery/update-status', upload.single('proof'), (req, res) => {
     delivery.proofImage = `/images/${req.file.filename}`;
   }
   res.redirect('/delivery/update-status');
-});
-
-// Support ticket stub (accept up to 2 attachments)
-app.post('/support', upload.array('attachments', 2), (req, res) => {
-  if (!currentUser) return res.redirect('/login');
-  const { orderId, reason } = req.body || {};
-  const userOrders = getOrdersForUser(currentUser);
-  if (!orderId || !reason) {
-    return res.status(400).render('support', {
-      user: currentUser,
-      orders: userOrders,
-      errorMessages: ['Order number and reason are required'],
-      successMessages: []
-    });
-  }
-  // Ensure the order belongs to the logged-in user before allowing a refund/support request
-  const order = orders.find((o) => String(o.id) === String(orderId));
-  const wallet = (currentUser.walletAddress || '').toLowerCase();
-  if (!order || (order.customer || '').toLowerCase() !== wallet) {
-    return res.status(403).render('support', {
-      user: currentUser,
-      orders: userOrders,
-      errorMessages: ['You can only request support/refunds for your own orders.'],
-      successMessages: []
-    });
-  }
-  // If refund reason is cancellation, restock items
-  if (String(reason).toLowerCase() === 'cancelling order') {
-    const restockItems = order.items && order.items.length
-      ? order.items
-      : [{ id: order.product, qty: order.qty }];
-    adjustProductStock(restockItems, +1);
-  }
-  const proofFiles = Array.isArray(req.files) ? req.files : [];
-  const attachments = proofFiles.map((file) => {
-    let data = '';
-    if (file.buffer) {
-      data = file.buffer.toString('base64');
-    } else if (file.path) {
-      try {
-        data = fs.readFileSync(file.path).toString('base64');
-      } catch (_err) {
-        data = '';
-      }
-    }
-    return {
-      name: file.originalname,
-      mimetype: file.mimetype,
-      data
-    };
-  });
-  tickets.push({
-    id: `TIC-${String(tickets.length + 1).padStart(4, '0')}`,
-    orderId: order.id,
-    customer: (order.customer || currentUser.walletAddress || '').toLowerCase(),
-    reason,
-    amount: Number(order.price || 0),
-    type: 'Full',
-    status: 'Open',
-    description: (req.body?.description || '').trim(),
-    address: (req.body?.address || '').trim(),
-    contact: (req.body?.contact || '').trim(),
-    attachments,
-    createdAt: new Date().toISOString()
-  });
-  res.render('support', {
-    user: currentUser,
-    orders: userOrders,
-    errorMessages: [],
-    successMessages: ['Ticket submitted. Our team will reach out soon.']
-  });
 });
 
 // Cart APIs
@@ -929,7 +842,6 @@ app.get('/order-status/:id', (req, res) => {
   if (ownerWallet && ownerWallet !== requester) {
     return res.status(403).json({ success: false, message: 'Forbidden' });
   }
-  const ticket = tickets.find((t) => String(t.orderId) === String(id));
   const statusMap = {
     [DELIVERY_STATUS.PENDING]: 'Pending',
     [DELIVERY_STATUS.OUT_FOR_DELIVERY]: 'Out for delivery',
@@ -938,33 +850,13 @@ app.get('/order-status/:id', (req, res) => {
   };
   let statusLabel = statusMap[delivery?.status] || order?.status || 'Pending';
   let status = delivery?.status || order?.status || 'pending';
-  if (ticket?.status === 'Approved' || order?.refundStatus === REFUND_STATUS.APPROVED || order?.status === 'Refunded') {
-    statusLabel = 'Refunded';
-    status = 'refunded';
-  }
-  if (ticket?.status === 'Rejected' || order?.refundStatus === REFUND_STATUS.REJECTED || order?.status === 'Refund Rejected') {
-    statusLabel = 'Refund rejected';
-    status = 'refund_rejected';
-  }
   return res.json({
     success: true,
     orderId: delivery?.orderNumber || order?.id || id,
     status,
     statusLabel,
-    updatedAt: ticket?.resolvedAt || order?.refundUpdatedAt || delivery?.updatedAt || delivery?.timestamp || order?.updatedAt || '',
-    ticket: ticket
-      ? {
-        id: ticket.id,
-        status: ticket.status,
-        reason: ticket.reason,
-        description: ticket.description,
-        createdAt: ticket.createdAt,
-        resolvedAt: ticket.resolvedAt || '',
-        refundTx: ticket.refundTx || '',
-        refundedWallet: ticket.refundedWallet || '',
-        attachments: ticket.attachments || []
-      }
-      : null
+    updatedAt: delivery?.updatedAt || delivery?.timestamp || order?.updatedAt || '',
+    ticket: null
   });
 });
 
@@ -1132,12 +1024,11 @@ app.get('/admin/orders/:id', (req, res) => {
   const delivery = deliveries.find(
     (item) => String(item.orderNumber || item.id) === String(order.id)
   );
-  const ticket = tickets.find((t) => String(t.orderId) === String(order.id));
   res.render('admin-order-detail', {
     user: currentUser,
     order,
     delivery,
-    ticket,
+    ticket: null,
     errorMessages: [],
     successMessages: []
   });
@@ -1284,90 +1175,6 @@ app.post('/admin/reactivate-user/:wallet', (req, res) => {
   const target = users[wallet];
   if (target) target.active = true;
   res.redirect('/admin/users');
-});
-
-app.get('/admin/customer-service', (_req, res) => {
-  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
-  res.render('admin-customer-service', {
-    user: currentUser,
-    errorMessages: [],
-    successMessages: [],
-    tickets: tickets.slice().reverse()
-  });
-});
-
-app.get('/admin/customer-service/:id', (req, res) => {
-  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
-  const ticket = tickets.find((t) => String(t.id) === String(req.params.id));
-  if (!ticket) return res.status(404).send('Ticket not found');
-  const order = orders.find((o) => String(o.id) === String(ticket.orderId));
-  res.render('admin-customer-service-detail', {
-    user: currentUser,
-    ticket,
-    order,
-    errorMessages: [],
-    successMessages: []
-  });
-});
-
-app.get('/admin/customer-service/approve/:id', (req, res) => {
-  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
-  const ticket = tickets.find((t) => String(t.id) === String(req.params.id));
-  if (!ticket) return res.status(404).send('Ticket not found');
-  ticket.status = 'Approved';
-  ticket.resolvedAt = new Date().toISOString();
-  ticket.refundTx = ticket.refundTx || '0xREFUND_DEMO';
-  ticket.refundedWallet = ticket.refundedWallet || ticket.customer;
-  const order = orders.find((o) => String(o.id) === String(ticket.orderId));
-  const delivery = deliveries.find((d) => String(d.orderNumber || d.id) === String(ticket.orderId));
-  if (order) {
-    order.status = 'Refunded';
-    order.refundStatus = REFUND_STATUS.APPROVED;
-    order.refundTicketId = ticket.id;
-    order.refundUpdatedAt = ticket.resolvedAt;
-    order.action = 'refund approved';
-    order.auditLog = order.auditLog || [];
-    order.auditLog.push({
-      action: 'Refund approved',
-      timestamp: ticket.resolvedAt,
-      function: 'approveRefund',
-      txHash: ticket.refundTx
-    });
-  }
-  if (delivery) {
-    delivery.refundStatus = REFUND_STATUS.APPROVED;
-    delivery.updatedAt = ticket.resolvedAt;
-  }
-  res.redirect('/admin/customer-service');
-});
-
-app.post('/admin/customer-service/reject/:id', (req, res) => {
-  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
-  const ticket = tickets.find((t) => String(t.id) === String(req.params.id));
-  if (!ticket) return res.status(404).send('Ticket not found');
-  ticket.status = 'Rejected';
-  ticket.resolvedAt = new Date().toISOString();
-  const order = orders.find((o) => String(o.id) === String(ticket.orderId));
-  const delivery = deliveries.find((d) => String(d.orderNumber || d.id) === String(ticket.orderId));
-  if (order) {
-    order.status = 'Refund Rejected';
-    order.refundStatus = REFUND_STATUS.REJECTED;
-    order.refundTicketId = ticket.id;
-    order.refundUpdatedAt = ticket.resolvedAt;
-    order.action = 'refund rejected';
-    order.auditLog = order.auditLog || [];
-    order.auditLog.push({
-      action: 'Refund rejected',
-      timestamp: ticket.resolvedAt,
-      function: 'rejectRefund',
-      txHash: '0xREFUND_REJECTED'
-    });
-  }
-  if (delivery) {
-    delivery.refundStatus = REFUND_STATUS.REJECTED;
-    delivery.updatedAt = ticket.resolvedAt;
-  }
-  res.redirect('/admin/customer-service');
 });
 
 // Admin product deactivate/reactivate

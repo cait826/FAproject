@@ -368,7 +368,6 @@ contract RepublicSurpriseContract {
         OutForDelivery,
         PendingConfirmation,
         Completed,
-        Refunded,
         Cancelled
     }
 
@@ -640,101 +639,15 @@ contract RepublicSurpriseContract {
         emit UserOrderStatusUpdated(id, status);
     }
 
-    // ---------- Refund Tickets ----------
-    enum RefundType {
-        None,
-        Full,
-        Partial
-    }
-
-    enum RefundStatus {
-        Open,
-        Approved,
-        Rejected,
-        Paid
-    }
-
-    struct RefundTicket {
-        uint256 id;
-        uint256 orderId;
-        address requester;
-        RefundType rType;
-        uint256 amount; // wei to refund
-        RefundStatus status;
-    }
-
-    uint256 public refundCount;
-    mapping(uint256 => RefundTicket) public refunds;
-
-    event RefundOpened(uint256 indexed refundId, uint256 indexed orderId, RefundType rType, uint256 amount);
-    event RefundApproved(uint256 indexed refundId, uint256 amount);
-    event RefundPaid(uint256 indexed refundId, uint256 amount, address to);
-
-    function openRefund(uint256 orderId, RefundType rType, uint256 amount)
-        external
-        returns (uint256 refundId)
-    {
-        Order storage o = orders[orderId];
-        require(o.buyer == msg.sender, "not buyer");
-        require(o.status == OrderStatus.Completed || o.status == OrderStatus.PendingConfirmation, "not eligible");
-        require(rType != RefundType.None, "invalid type");
-        require(amount > 0 && amount <= o.paid, "bad amount");
-
-        refundId = ++refundCount;
-        refunds[refundId] = RefundTicket({
-            id: refundId,
-            orderId: orderId,
-            requester: msg.sender,
-            rType: rType,
-            amount: amount,
-            status: RefundStatus.Open
-        });
-
-        emit RefundOpened(refundId, orderId, rType, amount);
-    }
-
-    function approveRefund(uint256 refundId) external onlyAdmin {
-        RefundTicket storage r = refunds[refundId];
-        require(r.id != 0, "refund not found");
-        require(r.status == RefundStatus.Open, "not open");
-        r.status = RefundStatus.Approved;
-        emit RefundApproved(refundId, r.amount);
-    }
-
-    function payRefund(uint256 refundId) external onlyAdmin {
-        RefundTicket storage r = refunds[refundId];
-        require(r.id != 0, "refund not found");
-        require(r.status == RefundStatus.Approved, "not approved");
-
-        Order storage o = orders[r.orderId];
-        require(o.id != 0, "order not found");
-
-        // update state first
-        o.status = OrderStatus.Refunded;
-        r.status = RefundStatus.Paid;
-
-        // safer payout
-        (bool ok, ) = payable(r.requester).call{value: r.amount}("");
-        require(ok, "refund failed");
-
-        emit RefundPaid(refundId, r.amount, r.requester);
-    }
-
-    // ---------- Legacy Payment Refund Style (kept) ----------
+    // ---------- Legacy Payment (kept) ----------
     struct Payment {
         address buyer;
         uint256 amountPaid;     // wei
-        uint256 refundApproved; // wei
-        bool refundClaimed;
     }
 
     mapping(uint256 => Payment) public payments; // orderId -> payment
 
     event Paid(uint256 orderId, address buyer, uint256 amountPaid);
-    event LegacyRefundApproved(uint256 orderId, uint256 refundAmount);
-    event RefundClaimed(uint256 orderId, address buyer, uint256 refundAmount);
-
-
     function paywithMetamask(uint256 orderId, uint256 productId) public payable {
         require(msg.value > 0, "pay > 0");
         require(orders[orderId].id == 0, "order exists");
@@ -755,7 +668,7 @@ contract RepublicSurpriseContract {
         _updateInventoryStatus(productId);
 
         // store legacy payment record
-        payments[orderId] = Payment(msg.sender, msg.value, 0, false);
+        payments[orderId] = Payment(msg.sender, msg.value);
 
         // create merged order
         orders[orderId] = Order({
@@ -775,50 +688,6 @@ contract RepublicSurpriseContract {
 
         emit Paid(orderId, msg.sender, msg.value);
         emit OrderCreated(orderId, productId, msg.sender, 1, false, msg.value);
-    }
-
-    function approvePartialRefund(uint256 orderId, uint256 refundAmount) public onlyAdmin {
-        Payment storage p = payments[orderId];
-        require(p.amountPaid > 0, "no payment");
-        require(refundAmount > 0 && refundAmount < p.amountPaid, "invalid refund");
-        require(!p.refundClaimed, "refund claimed");
-
-        p.refundApproved = refundAmount;
-        emit LegacyRefundApproved(orderId, refundAmount);
-    }
-
-    function approveFullRefund(uint256 orderId) public onlyAdmin {
-        Payment storage p = payments[orderId];
-        require(p.amountPaid > 0, "no payment");
-        require(!p.refundClaimed, "refund claimed");
-
-        p.refundApproved = p.amountPaid;
-        emit LegacyRefundApproved(orderId, p.amountPaid);
-    }
-
-    function claimRefund(uint256 orderId) public {
-        Payment storage p = payments[orderId];
-        require(p.amountPaid > 0, "no payment");
-        require(p.refundApproved > 0, "no refund");
-        require(!p.refundClaimed, "refund claimed");
-        require(msg.sender == p.buyer, "not buyer");
-
-        uint256 refundAmount = p.refundApproved;
-
-        // set state first
-        p.refundClaimed = true;
-        p.refundApproved = 0;
-
-        (bool ok, ) = payable(p.buyer).call{value: refundAmount}("");
-        require(ok, "refund failed");
-
-        // also update merged order status if exists
-        if (orders[orderId].id != 0) {
-            orders[orderId].status = OrderStatus.Refunded;
-            emit OrderStatusChanged(orderId, OrderStatus.Refunded);
-        }
-
-        emit RefundClaimed(orderId, p.buyer, refundAmount);
     }
 
     // ---------- Treasury ----------
