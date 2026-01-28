@@ -8,6 +8,15 @@ contract RepublicSurpriseContract {
     address public admin; // keep legacy "admin" variable for compatibility
     mapping(address => bool) public admins;
     mapping(address => bool) public deliveryMen;
+    mapping(address => Role) public roles;
+
+    enum Role {
+        None,
+        Buyer,
+        Delivery,
+        Admin,
+        Seller
+    }
 
     modifier onlyOwner() {
         require(msg.sender == owner, "owner only");
@@ -38,21 +47,27 @@ contract RepublicSurpriseContract {
         admin = msg.sender;
 
         admins[msg.sender] = true;
+        roles[msg.sender] = Role.Seller;
         emit AdminAdded(msg.sender);
     }
 
     // --- Role management ---
     event AdminAdded(address indexed account);
     event DeliveryAdded(address indexed account);
+    event RoleAssigned(address indexed account, Role role, address indexed actor);
 
     function addAdmin(address account) external onlyOwner {
         admins[account] = true;
+        roles[account] = Role.Admin;
         emit AdminAdded(account);
+        emit RoleAssigned(account, Role.Admin, msg.sender);
     }
 
     function addDeliveryMan(address account) external onlyAdmin {
         deliveryMen[account] = true;
+        roles[account] = Role.Delivery;
         emit DeliveryAdded(account);
+        emit RoleAssigned(account, Role.Delivery, msg.sender);
     }
 
     function isAdmin(address account) external view returns (bool) {
@@ -61,6 +76,24 @@ contract RepublicSurpriseContract {
 
     function isDelivery(address account) external view returns (bool) {
         return deliveryMen[account];
+    }
+
+    function assignRole(address account, Role role) external onlyAdmin {
+        require(account != address(0), "bad account");
+
+        if (role == Role.Admin) {
+            admins[account] = true;
+            deliveryMen[account] = false;
+        } else if (role == Role.Delivery) {
+            deliveryMen[account] = true;
+            admins[account] = false;
+        } else if (role == Role.Buyer) {
+            admins[account] = false;
+            deliveryMen[account] = false;
+        }
+
+        roles[account] = role;
+        emit RoleAssigned(account, role, msg.sender);
     }
 
     // ---------- Inventory Status (legacy) ----------
@@ -242,6 +275,10 @@ contract RepublicSurpriseContract {
     function registerUser(address user, bytes32 profileHash) public onlyAdmin {
         require(!users[user].exists, "User exists");
         users[user] = UserProfile(true, true, profileHash);
+        if (roles[user] == Role.None) {
+            roles[user] = Role.Buyer;
+            emit RoleAssigned(user, Role.Buyer, msg.sender);
+        }
         emit UserRegistered(user, profileHash);
         emit UserAuditLogged(user, "REGISTER", msg.sender, profileHash, true, block.timestamp);
     }
@@ -366,6 +403,18 @@ contract RepublicSurpriseContract {
 
     uint256 public orderCount;
     mapping(uint256 => Order) public orders;
+    mapping(uint256 => address) public orderDeliveryMan;
+    mapping(address => uint256[]) private ordersByDeliveryMan;
+
+    struct DeliveryLog {
+        OrderStatus status;
+        string note;
+        string proofImage;
+        uint256 timestamp;
+        address actor;
+    }
+
+    mapping(uint256 => DeliveryLog[]) private deliveryLogs;
 
     event OrderCreated(
         uint256 indexed orderId,
@@ -384,6 +433,26 @@ contract RepublicSurpriseContract {
     );
 
     event OrderStatusChanged(uint256 indexed orderId, OrderStatus status);
+    event DeliveryAssigned(uint256 indexed orderId, address indexed deliveryMan, address indexed actor);
+    event DeliveryLogAdded(uint256 indexed orderId, OrderStatus status, address indexed actor, string note, string proofImage);
+
+    function _logDelivery(
+        uint256 orderId,
+        OrderStatus status,
+        string memory note,
+        string memory proofImage
+    ) internal {
+        deliveryLogs[orderId].push(
+            DeliveryLog({
+                status: status,
+                note: note,
+                proofImage: proofImage,
+                timestamp: block.timestamp,
+                actor: msg.sender
+            })
+        );
+        emit DeliveryLogAdded(orderId, status, msg.sender, note, proofImage);
+    }
 
     function productPrice(uint256 productId, bool isSet, uint256 qty) external view returns (uint256) {
         Product memory p = products[productId];
@@ -436,6 +505,7 @@ contract RepublicSurpriseContract {
         });
 
         emit OrderCreated(orderId, productId, msg.sender, qty, isSet, msg.value);
+        _logDelivery(orderId, OrderStatus.Paid, "ORDER_PAID", "");
     }
 
     function markOutForDelivery(uint256 orderId, string calldata deliveryId) external onlyAdmin {
@@ -447,6 +517,7 @@ contract RepublicSurpriseContract {
         o.deliveryId = deliveryId;
 
         emit DeliveryStatus(orderId, deliveryId, o.status, "");
+        _logDelivery(orderId, o.status, "OUT_FOR_DELIVERY", "");
     }
 
     // merged signature: allow delivery man OR admin (since old code used onlyAdmin)
@@ -459,6 +530,7 @@ contract RepublicSurpriseContract {
         o.status = OrderStatus.PendingConfirmation;
 
         emit DeliveryStatus(orderId, o.deliveryId, o.status, proofImage);
+        _logDelivery(orderId, o.status, "PROOF_SUBMITTED", proofImage);
     }
 
     function confirmDelivery(uint256 orderId) external onlyAdmin {
@@ -468,6 +540,73 @@ contract RepublicSurpriseContract {
 
         o.status = OrderStatus.Completed;
         emit OrderStatusChanged(orderId, o.status);
+        _logDelivery(orderId, o.status, "DELIVERY_CONFIRMED", o.proofImage);
+    }
+
+    function assignDeliveryManToOrder(uint256 orderId, address deliveryMan) external onlyAdmin {
+        require(deliveryMen[deliveryMan], "not delivery");
+        Order storage o = orders[orderId];
+        require(o.id != 0, "order not found");
+
+        orderDeliveryMan[orderId] = deliveryMan;
+        ordersByDeliveryMan[deliveryMan].push(orderId);
+        emit DeliveryAssigned(orderId, deliveryMan, msg.sender);
+    }
+
+    function deliveryAddStatus(
+        uint256 orderId,
+        OrderStatus status,
+        string calldata note,
+        string calldata proofImage
+    ) external onlyDeliveryOrAdmin {
+        _setDeliveryStatus(orderId, status, note, proofImage);
+    }
+
+    function deliveryUpdateStatus(
+        uint256 orderId,
+        OrderStatus status,
+        string calldata note,
+        string calldata proofImage
+    ) external onlyDeliveryOrAdmin {
+        _setDeliveryStatus(orderId, status, note, proofImage);
+    }
+
+    function _setDeliveryStatus(
+        uint256 orderId,
+        OrderStatus status,
+        string calldata note,
+        string calldata proofImage
+    ) internal {
+        Order storage o = orders[orderId];
+        require(o.id != 0, "order not found");
+
+        if (!admins[msg.sender]) {
+            require(
+                status == OrderStatus.OutForDelivery ||
+                    status == OrderStatus.PendingConfirmation,
+                "admin only status"
+            );
+        }
+
+        o.status = status;
+        if (bytes(proofImage).length > 0) {
+            o.proofImage = proofImage;
+        }
+
+        emit OrderStatusChanged(orderId, status);
+        _logDelivery(orderId, status, note, proofImage);
+    }
+
+    function getDeliveryHistory(uint256 orderId) external view returns (DeliveryLog[] memory) {
+        return deliveryLogs[orderId];
+    }
+
+    function getOrderDetail(uint256 orderId) external view returns (Order memory) {
+        return orders[orderId];
+    }
+
+    function getOrdersForDelivery(address deliveryMan) external view returns (uint256[] memory) {
+        return ordersByDeliveryMan[deliveryMan];
     }
 
     // ---------- User Order Tracking (legacy) ---------- (angela)
