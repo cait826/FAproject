@@ -101,7 +101,7 @@
     </style>
   </head>
   <body>
-    <%- include('partials/header', { hideLoginButton: true }) %>
+    <%- include('partials/header') %>
     <div class="card">
       <h1>Create your account</h1>
       <p>Connect your MetaMask wallet and fill in your details to register.</p>
@@ -117,22 +117,10 @@
       <% } %>
       <form id="registrationForm" method="post" action="/register">
         <label>
-          Full name
-          <input type="text" name="name" required placeholder="Jane Doe" />
-        </label>
-        <label>
           Wallet Address
           <input type="text" id="walletAddress" name="walletAddress" required placeholder="0x..." readonly />
         </label>
         <button type="button" id="connectWallet">Connect MetaMask</button>
-        <label>
-          Address
-          <input type="text" name="address" required placeholder="123 Toy Street" />
-        </label>
-        <label>
-          Contact number
-          <input type="tel" name="contact" required pattern="^[0-9+\\-\\s]{7,}$" placeholder="+65 8123 4567" />
-        </label>
         <label>
           Role
           <select name="role" required>
@@ -161,7 +149,7 @@
         statusEl.className = isError ? 'status error' : 'status';
       };
 
-      const validateWalletAvailability = async (account, autoPrompt = true) => {
+      const validateWalletAvailability = async (account) => {
         if (!account) {
           walletIsAvailable = false;
           setStatus('Wallet address is required.', true);
@@ -173,8 +161,7 @@
           const payload = await response.json();
           if (payload.inUse) {
             walletIsAvailable = false;
-            setStatus('This MetaMask address already has an account. Switch to a different wallet before proceeding.', true);
-            if (autoPrompt) await promptAccountSelection();
+            setStatus('This MetaMask address already has an account. Switch accounts in MetaMask, then click Connect again.', true);
             return false;
           }
           walletIsAvailable = true;
@@ -188,15 +175,15 @@
         }
       };
 
-      const promptAccountSelection = async () => {
-        if (!window.ethereum || !window.ethereum.request) return;
+      const pickCurrentAccount = async () => {
         try {
-          await window.ethereum.request({
-            method: 'wallet_requestPermissions',
-            params: [{ eth_accounts: {} }]
-          });
-        } catch (err) {
-          console.debug('Permission request skipped', err);
+          if (window.ethereum && window.ethereum.selectedAddress) {
+            return window.ethereum.selectedAddress;
+          }
+          const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+          return (accounts && accounts[0]) || '';
+        } catch (_err) {
+          return '';
         }
       };
 
@@ -218,9 +205,18 @@
         }
         try {
           setStatus('Requesting wallet...', false);
-          await promptAccountSelection();
-          const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-          await handleAccountsChanged(accounts);
+          const FIRST_PROMPT_KEY = 'rs_first_account_prompted';
+          if (!localStorage.getItem(FIRST_PROMPT_KEY)) {
+            await window.ethereum.request({
+              method: 'wallet_requestPermissions',
+              params: [{ eth_accounts: {} }]
+            });
+            localStorage.setItem(FIRST_PROMPT_KEY, '1');
+          }
+          await window.ethereum.request({ method: 'eth_requestAccounts' });
+          // Always bind to the currently active MetaMask account after the prompt
+          const active = await pickCurrentAccount();
+          await handleAccountsChanged([active]);
         } catch (err) {
           setStatus(err && err.message ? err.message : 'Unable to connect wallet.', true);
         }

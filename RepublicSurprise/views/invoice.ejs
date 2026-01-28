@@ -54,13 +54,14 @@
         <div class="meta-row"><strong>Invoice ID:</strong> <span id="id"></span></div>
         <div class="meta-row"><strong>Order ID:</strong> <span id="orderId"></span></div>
         <div class="meta-row"><strong>Date:</strong> <span id="date"></span></div>
+        <div class="meta-row"><strong>Merchant:</strong> <span id="merchant"></span></div>
       </div>
 
       <div class="col details">
-        <div class="meta-row"><strong>Username:</strong> <span id="username"></span></div>
         <div class="meta-row"><strong>Buyer wallet:</strong> <span id="buyer"></span></div>
+        <div class="meta-row"><strong>Name:</strong> <span id="username"></span></div>
+        <div class="meta-row"><strong>Delivery address:</strong> <span id="deliveryAddress"></span></div>
         <div class="meta-row"><strong>Contact:</strong> <span id="contact"></span></div>
-        <div class="meta-row"><strong>Merchant:</strong> <span id="merchant"></span></div>
       </div>
 
       <div class="col details">
@@ -104,6 +105,12 @@
 
 <script>
 (() => {
+  // Prevent browser Back from returning to /payment; send shoppers to catalog instead
+  history.replaceState({ page: 'invoice' }, document.title, window.location.pathname);
+  window.addEventListener('popstate', () => {
+    window.location.replace('/shopping');
+  });
+
   const KEYS = ['INVOICE_DATA','FA_INVOICE_DATA','PAYMENT_RESULT','ORDER_RESULT'];
   const TRACKING_KEY = 'ORDER_TRACKING_DATA';
   const $ = id => document.getElementById(id);
@@ -141,17 +148,16 @@
     }
 
     $('id').textContent = inv.invoiceId || inv.invoice_id || '';
-    // Ensure a fresh order ID is created for each successful transaction
-    const newOrderId = 'ORD-' + Date.now() + '-' + (Math.floor(Math.random()*9000)+1000);
-    inv.orderId = inv.orderId || inv.order_id || newOrderId;
+    inv.orderId = inv.orderId || inv.order_id || inv.invoiceId || '';
     $('orderId').textContent = inv.orderId;
     $('date').textContent = inv.dateTime || inv.date || new Date().toLocaleString();
-    // Username (prefer invoice, then server session, then invoice name fields)
-    $('username').textContent = inv.username || inv.name || SERVER_CUSTOMER_NAME || '';
     $('buyer').textContent = inv.wallet || inv.buyerAddress || inv.buyer || '';
+    $('username').textContent = inv.username || inv.name || SERVER_CUSTOMER_NAME || '';
+    $('deliveryAddress').textContent = inv.shippingAddress || inv.shipping || inv.ship || '';
     $('merchant').textContent = inv.merchantAddress || inv.merchant || 'Republic Surprise';
     // Prefer contact from invoice, then server-rendered user contact, then any email field
     $('contact').textContent = inv.contact || SERVER_CUSTOMER_CONTACT || inv.email || '';
+    $('deliveryAddress').textContent = inv.shippingAddress || inv.shipping || inv.ship || '';
     // Payment method — this app uses MetaMask for payments
     $('payMethod').textContent = 'MetaMask';
     const payStatus = inv.paymentStatus || inv.status || (inv.paid? 'paid' : '');
@@ -210,47 +216,6 @@
     $('total').textContent = fmtSgd(totalVal);
 
     $('card').style.display = 'block';
-
-    // If contact or username still empty, try fetching the user's profile page
-    try {
-      const needContact = (!$('contact').textContent || $('contact').textContent.trim() === '');
-      const needName = (!$('username').textContent || $('username').textContent.trim() === '');
-      if (needContact || needName) {
-        fetch('/user/profile', { cache: 'no-store' }).then(async (res)=>{
-          if(!res.ok) return;
-          const txt = await res.text();
-          const parser = new DOMParser();
-          const doc = parser.parseFromString(txt, 'text/html');
-
-          // Try to extract contact/phone
-          if (needContact) {
-            const contactInput = doc.querySelector('input#contact, input[name="contact"], input[name="phone"], input[name="telephone"]');
-            if(contactInput && contactInput.value){
-              $('contact').textContent = contactInput.value;
-              try{ inv.contact = contactInput.value; }catch(e){}
-            }
-          }
-
-          // Try to extract registered name for Username
-          if (needName) {
-            const nameInput = doc.querySelector('input#name, input[name="name"], input#username, input[name="username"], input[name="fullName"], input[name="fullname"], input[name="firstName"]');
-            let nameVal = '';
-            if (nameInput && nameInput.value) nameVal = nameInput.value.trim();
-            if (!nameVal) {
-              const possible = doc.querySelector('.user-name, .username, #profileName, .profile-name, h1');
-              if (possible) nameVal = possible.textContent.trim();
-            }
-            if (nameVal) {
-              $('username').textContent = nameVal;
-              try{ inv.username = nameVal; }catch(e){}
-            }
-          }
-
-          // persist any changes made
-          try{ sessionStorage.setItem('INVOICE_DATA', JSON.stringify(inv)); }catch(e){}
-        }).catch(()=>{});
-      }
-    } catch(e) { /* ignore */ }
 
     // create or update tracking entry (ensure orderId persisted)
     try {

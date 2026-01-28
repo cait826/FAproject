@@ -64,6 +64,7 @@
 <script>
 (() => {
   const TRACKING_KEY = 'ORDER_TRACKING_DATA';
+  const CURRENT_WALLET = <%- JSON.stringify((user && user.walletAddress) ? user.walletAddress.toLowerCase() : '') %>;
   const $ = id => document.getElementById(id);
   function fmtSgd(n, rate){
     const value = Number(n) || 0;
@@ -112,7 +113,11 @@
   }
 
   document.addEventListener('DOMContentLoaded', () => {
-    const list = readTrackingList();
+    const list = readTrackingList().filter(entry => {
+      if (!CURRENT_WALLET) return true;
+      const wallet = (entry.customerWallet || entry.wallet || '').toLowerCase();
+      return wallet === CURRENT_WALLET;
+    });
     if (!list.length) { $('no-tracking').style.display = 'block'; return; }
 
     const params = new URLSearchParams(window.location.search);
@@ -141,8 +146,24 @@
       switcher.style.display = 'block';
     }
 
-    renderTracking(current);
-    $('tracking-card').style.display = 'block';
+    // Fetch live status from server to keep aligned with admin/delivery dashboards
+    const injectLiveStatus = async () => {
+      if (!current.orderId) return;
+      try {
+        const res = await fetch('/order-status/' + encodeURIComponent(current.orderId), { cache: 'no-store' });
+        if (res.ok) {
+          const body = await res.json();
+          if (body?.success) {
+            current.statusHistory = [{ label: body.statusLabel, time: body.updatedAt || current.placedAt }];
+          }
+        }
+      } catch (e) { /* ignore */ }
+    };
+
+    injectLiveStatus().finally(() => {
+      renderTracking(current);
+      $('tracking-card').style.display = 'block';
+    });
   });
 })();
 </script>

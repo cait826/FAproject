@@ -222,7 +222,6 @@
                   </td>
                   <td>
                     <div class="actions">
-                      <a class="btn edit" href="/admin/update-product?id=<%= product.id %>">Edit</a>
                       <% if (product.active === false) { %>
                         <form method="post" action="/admin/reactivate-product/<%= product.id %>" style="margin:0;">
                           <button class="btn edit" type="submit">Reactivate</button>

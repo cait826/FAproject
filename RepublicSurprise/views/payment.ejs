@@ -147,6 +147,34 @@
       margin-top: 12px;
     }
 
+    .address-panel{
+      margin-top: 12px;
+      padding: 14px;
+      border: 1px dashed rgba(0,0,0,0.12);
+      border-radius: 14px;
+      background: #fffaf3;
+    }
+    .field-row{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+    }
+    .field-row label{ font-weight:800; font-size:14px; }
+    .field-row input[type="text"]{
+      padding:10px 12px;
+      border:1px solid rgba(0,0,0,0.12);
+      border-radius:12px;
+      font-size:15px;
+    }
+    .inline{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      margin-top:8px;
+      font-weight:700;
+      font-size:14px;
+    }
+
     .btn{
       border: none;
       border-radius: 12px;
@@ -225,16 +253,28 @@
                 <div id="total-amt">S$0.00</div>
               </div>
 
+              <div class="address-panel">
+                <div class="field-row">
+                  <label for="fullName">Full name (required)</label>
+                  <input id="fullName" type="text" placeholder="Full name" autocomplete="name" />
+                </div>
+                <div class="field-row">
+                  <label for="shippingAddress">Shipping address (required)</label>
+                  <input id="shippingAddress" type="text" placeholder="Block / Street / Unit / Postal" autocomplete="shipping street-address" />
+                </div>
+                <div class="field-row" style="margin-top:8px;">
+                  <label for="contactNumber">Contact number (required)</label>
+                  <input id="contactNumber" type="tel" placeholder="+65 8123 4567" autocomplete="tel" />
+                </div>
+                <div class="small muted" id="addressStatus" aria-live="polite" style="margin-top:4px;"></div>
+              </div>
+
               <div class="wallet-panel">
                 <div class="small" style="margin-bottom:10px;">
-                  Wallet: <strong id="wallet">Not connected</strong>
+                  Wallet: <strong id="wallet"></strong>
                 </div>
 
-                <div id="wallet-actions">
-                  <button id="btnConnect" class="btn btnPrimary">🔗 Connect Wallet (MetaMask)</button>
-                  <button id="btnConfirm" class="btn btnConfirm" disabled style="margin-left:8px;">✅ Confirm Payment</button>
-                  <!-- View Invoice link removed from wallet panel — inline invoice will display after payment -->
-                </div>
+                <div id="wallet-actions">                  <button id="btnConfirm" class="btn btnConfirm" disabled>Confirm Payment</button>                </div>
 
                 <div class="small" id="status"></div>
               </div>
@@ -256,6 +296,9 @@
               <div style="margin:6px 0;">Invoice ID: <strong id="inv-id"></strong></div>
               <div style="margin:6px 0;">Date: <span id="inv-date"></span></div>
               <div style="margin:6px 0;">Wallet: <code id="inv-wallet"></code></div>
+              <div style="margin:6px 0;">Name: <span id="inv-name"></span></div>
+              <div style="margin:6px 0;">Delivery address: <span id="inv-addr"></span></div>
+              <div style="margin:6px 0;">Contact: <span id="inv-contact"></span></div>
             </div>
 
             <table>
@@ -297,15 +340,95 @@
     const TRACKING_KEY = 'ORDER_TRACKING_DATA';
     const COINGECKO_URL = 'https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=sgd';
     const SERVER_CUSTOMER_NAME = <%- JSON.stringify((user && user.name) ? user.name : '') %>;
+    const SERVER_WALLET = <%- JSON.stringify((user && user.walletAddress) ? user.walletAddress : '') %>;
     const SERVER_CUSTOMER_ADDRESS = <%- JSON.stringify((user && user.address) ? user.address : '') %>;
     const SERVER_CUSTOMER_CONTACT = <%- JSON.stringify((user && user.contact) ? user.contact : '') %>;
 
     const $ = id => document.getElementById(id);
 
+    let selectedAddress = '';
+    let selectedContact = '';
+    let selectedName = '';
+    let connected = SERVER_WALLET || '';
+
+    const addressInput = () => $('shippingAddress');
+    const addressCheckbox = () => null;
+    const addressStatus = () => $('addressStatus');
+    const contactInput = () => $('contactNumber');
+    const nameInput = () => $('fullName');
+
+    function setAddress(value, lockInput = false){
+      const input = addressInput();
+      if(!input) return;
+      const val = (value || '').trim();
+      selectedAddress = val;
+      input.value = val;
+      input.readOnly = lockInput;
+      input.classList.toggle('muted', lockInput);
+      const status = addressStatus();
+      if(status){
+        status.textContent = val ? '' : 'Address is required to proceed.';
+      }
+      updateConfirmState();
+    }
+
+    function setContact(value){
+      const input = contactInput();
+      if(!input) return;
+      const val = (value || '').trim();
+      selectedContact = val;
+      input.value = val;
+      updateConfirmState();
+    }
+
+    function setName(value){
+      const input = nameInput();
+      if(!input) return;
+      const val = (value || '').trim();
+      selectedName = val;
+      input.value = val;
+      updateConfirmState();
+    }
+
+    function updateConfirmState(){
+      const btnConfirm = $('btnConfirm');
+      const hasAddress = !!(selectedAddress && selectedAddress.trim().length);
+      const hasContact = !!(selectedContact && selectedContact.trim().length);
+      const hasName = !!(selectedName && selectedName.trim().length);
+      const hasWallet = !!connected;
+      if (btnConfirm) btnConfirm.disabled = !(hasAddress && hasContact && hasName && hasWallet);
+    }
+
     function fmtSgd(n){
       // Treat the input number as an SGD amount (cart prices are stored in SGD)
       const num = Number(n) || 0;
       return 'S$' + num.toFixed(2);
+    }
+
+    // Address UI setup (must provide an address or explicitly use account address)
+    const addrInputEl = addressInput();
+    const contactEl = contactInput();
+    const nameEl = nameInput();
+    const walletEl = $('wallet');
+    if (walletEl) walletEl.textContent = connected ? (connected.slice(0,6)+'...'+connected.slice(-4)) : 'Not available';
+    // preload contact/address if available
+    if (addrInputEl && SERVER_CUSTOMER_ADDRESS) {
+      setAddress(SERVER_CUSTOMER_ADDRESS, false);
+    }
+    if (contactEl && SERVER_CUSTOMER_CONTACT) {
+      setContact(SERVER_CUSTOMER_CONTACT);
+    }
+    if (nameEl && SERVER_CUSTOMER_NAME && SERVER_CUSTOMER_NAME.trim().toLowerCase() !== 'user') {
+      setName(SERVER_CUSTOMER_NAME);
+    }
+    if (addrInputEl) {
+      addrInputEl.addEventListener('input', (e) => setAddress(e.target.value, false));
+    }
+    if (contactEl) {
+      contactEl.addEventListener('input', (e) => setContact(e.target.value));
+    }
+    if (nameEl) {
+      nameEl.addEventListener('input', (e) => setName(e.target.value));
     }
 
     async function fetchRate(){
@@ -324,56 +447,37 @@
     }
 
     async function loadCheckout(){
-      // Always prefer the server cart to avoid stale sessionStorage data.
+      // Prefer server cart JSON to avoid stale parsing
       try{
-        const res = await fetch('/cart', { cache: 'no-store' });
+        const res = await fetch('/api/cart', { cache: 'no-store' });
         if(res && res.ok){
-          const text = await res.text();
-          const parser = new DOMParser();
-          const doc = parser.parseFromString(text, 'text/html');
-          const items = [];
-          doc.querySelectorAll('.item').forEach(node => {
-            const name = (node.querySelector('h3')?.textContent || '').trim();
-            const priceTextRaw = (node.querySelector('.meta')?.textContent || '').replace('S$', '').trim();
-            const priceNumText = priceTextRaw.replace(/[^0-9\.]/g, '');
-            const price = Number(priceNumText) || 0;
-            const qtyInput = node.querySelector('input[name=qty]');
-            const qty = Number(qtyInput?.value) || 1;
-            const idInput = node.querySelector('input[name=id]');
-            const id = idInput?.value || '';
-            items.push({ id, name, price, qty, description: '' });
-          });
-
-          // parse subtotal / shipping / total from summary lines
-          let subtotal = 0, shipping = 0, total = 0;
-          doc.querySelectorAll('.summary-line').forEach(line => {
-            const key = (line.querySelector('span')?.textContent || '').trim().toLowerCase();
-            const valText = (line.querySelectorAll('span')[1]?.textContent || '').replace('S$', '').trim();
-            const num = Number(valText.replace(/[^0-9\.]/g, '')) || 0;
-            if(key.includes('subtotal')) subtotal = num;
-            else if(key.includes('shipping')) shipping = num;
-          });
-          const totalEl = doc.querySelector('.summary-total span:last-child');
-          if(totalEl){ total = Number((totalEl.textContent || '').replace(/[^0-9\.]/g, '')) || (subtotal + shipping); }
-          else { total = items.reduce((s,i)=>s + (Number(i.price)||0) * (Number(i.qty)||0), 0) + shipping; }
-
-          // Fallback: if subtotal/shipping weren't parsed but items exist, compute them like server does
-          if((!subtotal || subtotal === 0) && items.length){
-            subtotal = items.reduce((s,i)=>s + (Number(i.price)||0) * (Number(i.qty)||0), 0);
-            shipping = subtotal > 0 ? 6.9 : 0;
-            total = subtotal + shipping;
+          const body = await res.json();
+          if(body?.success){
+            const items = Array.isArray(body.items) ? body.items : [];
+            const totals = body.totals || {};
+            const subtotal = Number(totals.subtotal || 0);
+            const shipping = Number(totals.shipping || 0);
+            const total = Number(totals.total || 0) || subtotal + shipping;
+            const checkout = { items, subtotal, shipping, total };
+            try{ sessionStorage.setItem(CHECKOUT_KEY, JSON.stringify(checkout)); }catch(e){}
+            return checkout;
           }
-
-          const checkout = { items, subtotal, shipping, total };
-          try{ sessionStorage.setItem(CHECKOUT_KEY, JSON.stringify(checkout)); }catch(e){}
-          return checkout;
+        }
+        // if unauthorized or empty, send user back to cart
+        if(res && res.status === 401){
+          window.location.href = '/login';
+          return { items: [], subtotal: 0, shipping: 0, total: 0 };
+        }
+        if(res && res.status === 403){
+          window.location.href = '/cart';
+          return { items: [], subtotal: 0, shipping: 0, total: 0 };
         }
       }catch(e){ /* ignore and fall back */ }
 
       const raw = sessionStorage.getItem(CHECKOUT_KEY) || sessionStorage.getItem(ALT_KEY);
       if(raw){ try{ return JSON.parse(raw); }catch(e){} }
 
-      return { items: [{ name: 'Demo Surprise Box', qty: 1, price: 0.01, description: '' }], total: 0.01 };
+      return { items: [], total: 0, subtotal: 0, shipping: 0 };
     }
 
     const SHIPPING_DESC = 'Standard shipping (3-5 days)';
@@ -402,11 +506,7 @@
         `Items: ${(chk.items||[]).map(x=>x.name).join(', ')} — Total ${fmtSgd(chk.total||0)}`;
     }
 
-    async function connectWallet(){
-      if(!window.ethereum){ throw new Error('MetaMask not detected'); }
-      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-      return accounts && accounts[0];
-    }
+    // Wallet is taken from the logged-in session; no MetaMask connect needed here.
 
     const checkoutPromise = loadCheckout();
 
@@ -436,27 +536,24 @@
       checkoutPromise.then((chk)=>{ renderOrder(chk); window.__checkout = chk; }).catch(()=>renderOrder({ items: [], total: 0 }));
     });
 
-    let connected = null;
-
-    $('btnConnect').addEventListener('click', async ()=>{
-      try{
-        $('status').textContent = 'Requesting wallet...';
-        const acc = await connectWallet();
-        connected = acc;
-        $('wallet').textContent = acc ? (acc.slice(0,6)+'...'+acc.slice(-4)) : 'Connected';
-        $('status').textContent = acc ? 'Wallet connected' : '';
-        $('btnConfirm').disabled = false;
-      }catch(err){
-        $('status').textContent = err && err.message ? err.message : String(err);
-        if(String(err).toLowerCase().includes('user rejected')) $('status').textContent = 'Connection request rejected';
-      }
-    });
-
-    // The View Invoice link was removed from the wallet panel; inline invoice will be shown after payment.
-
     $('btnConfirm').addEventListener('click', async ()=>{
+      if (!selectedAddress || !selectedAddress.trim()) {
+        $('status').textContent = 'Please enter your shipping address.';
+        updateConfirmState();
+        return;
+      }
+      if (!selectedContact || !selectedContact.trim()) {
+        $('status').textContent = 'Please enter a contact number.';
+        updateConfirmState();
+        return;
+      }
+      if (!selectedName || !selectedName.trim()) {
+        $('status').textContent = 'Please enter your name.';
+        updateConfirmState();
+        return;
+      }
       $('status').textContent = 'Processing payment...';
-      $('btnConfirm').disabled = true; $('btnConnect').disabled = true;
+      $('btnConfirm').disabled = true;
       const chk = window.__checkout || await checkoutPromise.catch(()=>({ items: [], total: 0 }));
       setTimeout(()=>{
         $('status').textContent = 'Payment successful (simulated)';
@@ -467,18 +564,27 @@
     
 
     function showInvoice(account, chk){
+      const orderId = 'ORD-' + Date.now();
       const inv = {
         invoiceId: 'INV-'+Date.now(),
         dateTime: new Date().toLocaleString(),
         wallet: account || 'N/A',
         items: chk.items ? [...chk.items] : [],
         total: chk.total || 0,
-        sgdTotal: (chk.total || 0)
+        sgdTotal: (chk.total || 0),
+        shippingAddress: selectedAddress,
+        billingAddress: selectedAddress,
+        contact: selectedContact,
+        username: selectedName,
+        orderId
       };
 
       $('inv-id').textContent = inv.invoiceId;
       $('inv-date').textContent = inv.dateTime;
       $('inv-wallet').textContent = inv.wallet;
+      $('inv-name').textContent = selectedName;
+      $('inv-addr').textContent = inv.shippingAddress || '';
+      $('inv-contact').textContent = inv.contact || '';
 
       const tbody = $('inv-items'); tbody.innerHTML = '';
       // include shipping as an invoice line
@@ -502,17 +608,16 @@
       try{ sessionStorage.setItem(INVOICE_KEY, JSON.stringify(inv)); }catch(e){}
 
       const tracking = {
-        orderId: 'ORD-' + Date.now(),
+        orderId,
         invoiceId: inv.invoiceId,
         placedAt: inv.dateTime,
         items: inv.items || [],
         statusHistory: [
-          { label: 'Payment confirmed', time: inv.dateTime },
-          { label: 'Order packed', time: 'Pending' },
-          { label: 'Out for delivery', time: 'Pending' },
-          { label: 'Delivered', time: 'Pending' }
+          { label: 'Pending', time: inv.dateTime }
         ],
-        sgdTotal: inv.sgdTotal
+        sgdTotal: inv.sgdTotal,
+        customerWallet: account || '',
+        wallet: account || ''
       };
       // persist tracking and notify server to create a delivery record
       try{
@@ -535,9 +640,9 @@
       // create delivery record for delivery staff — do not redirect the paying user
       const payload = {
         orderId: tracking.orderId,
-        customerName: SERVER_CUSTOMER_NAME || inv.wallet,
-        address: SERVER_CUSTOMER_ADDRESS || '',
-        contact: SERVER_CUSTOMER_CONTACT || '',
+        customerName: selectedName || SERVER_CUSTOMER_NAME || inv.wallet,
+        address: selectedAddress || SERVER_CUSTOMER_ADDRESS || '',
+        contact: selectedContact || SERVER_CUSTOMER_CONTACT || '',
         customerWallet: account || '',
         items: chk.items || [],
         total: chk.total || 0
@@ -551,6 +656,9 @@
       }).catch((err) => {
         console.warn('Failed to create delivery record', err);
       });
+
+      // Clear server-side cart after successful checkout
+      fetch('/cart/clear', { method: 'POST' }).catch(()=>{ /* ignore */ });
 
       const orderPayload = {
         orderId: tracking.orderId,
@@ -576,14 +684,16 @@
       $('invoice').style.display = 'block';
       $('payment-card').style.display = 'none';
       $('invoice-preview').textContent = 'Invoice ready';
+      // Prevent navigating back into the payment form after a successful order
+      history.replaceState({ stage: 'invoice' }, document.title, window.location.href);
+      const handlePop = () => window.location.replace('/shopping');
+      window.addEventListener('popstate', handlePop, { once: true });
     }
 
     $('printBtn').addEventListener('click', ()=> window.print());
     $('backBtn').addEventListener('click', ()=>{
-      $('invoice').style.display = 'none';
-      $('payment-card').style.display = 'block';
-      $('btnConfirm').disabled = false;
-      $('btnConnect').disabled = false;
+      // After a successful payment, return shoppers to the catalog instead of payment
+      window.location.href = '/shopping';
     });
   })();
   </script>
@@ -591,3 +701,4 @@
   <%- include('partials/footer') %>
 </body>
 </html>
+

@@ -22,9 +22,7 @@
         color: var(--text);
         min-height: 100vh;
         display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 72px 16px 64px;
+        flex-direction: column;
       }
       .card {
         width: min(420px, 100%);
@@ -61,11 +59,7 @@
         cursor: pointer;
         transition: transform 0.15s ease, box-shadow 0.2s ease;
       }
-      #reopenPermissions {
-        background: var(--accent-2);
-      }
       button:hover { transform: translateY(-2px); box-shadow: 0 10px 22px rgba(251,191,36,0.35); }
-      button#reopenPermissions:hover { box-shadow: 0 10px 22px rgba(46,196,182,0.35); }
       button:disabled { opacity: 0.6; cursor: not-allowed; box-shadow: none; }
       .status {
         font-size: 0.9rem;
@@ -96,24 +90,20 @@
         border: 1px solid rgba(74, 222, 128, 0.4);
         color: #bbf7d0;
       }
-      header, footer {
-        position: fixed;
-        left: 0;
-        right: 0;
-        padding: 14px 18px;
-        text-align: center;
-        background: rgba(255,255,255,0.7);
-        backdrop-filter: blur(6px);
-        color: var(--text);
+      .page {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        padding: 72px 16px 96px;
       }
-      header { top: 0; }
-      footer { bottom: 0; }
-      header h2, footer p { margin: 0; letter-spacing: 0.5px; }
     </style>
   </head>
   <body>
-    <%- include('partials/header', { hideLoginButton: true }) %>
-    <div class="card">
+    <%- include('partials/header') %>
+    <div class="page">
+      <div class="card">
       <h1>Login</h1>
       <p>Connect your MetaMask wallet to access your account.</p>
       <% if (errorMessages && errorMessages.length) { %>
@@ -134,11 +124,11 @@
         <button type="button" id="connectWallet">Connect MetaMask</button>
         <button type="submit" id="loginBtn" disabled>Sign in</button>
         <div class="status" id="status"></div>
-        <p class="helper">Need to switch accounts? Open the MetaMask extension or press the button below to re-open the permissions dialog.</p>
-        <button type="button" id="reopenPermissions">Re-open MetaMask Accounts</button>
+        <p class="helper">Need to switch accounts? Open the MetaMask extension and select the wallet you want to use, then click Connect again.</p>
       </form>
       <div class="links">
         No account? <a href="/register">Register here</a>
+      </div>
       </div>
     </div>
     <%- include('partials/footer') %>
@@ -149,6 +139,19 @@
       const connectBtn = document.getElementById('connectWallet');
       const loginBtn = document.getElementById('loginBtn');
       const walletInput = document.getElementById('walletAddress');
+
+      const pickCurrentAccount = async () => {
+        try {
+          // Prefer MetaMask's selectedAddress if present, otherwise fall back to eth_accounts[0]
+          if (window.ethereum && window.ethereum.selectedAddress) {
+            return window.ethereum.selectedAddress;
+          }
+          const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+          return (accounts && accounts[0]) || '';
+        } catch (_err) {
+          return '';
+        }
+      };
 
       const setStatus = (msg, isError) => {
         statusEl.textContent = msg || '';
@@ -180,8 +183,10 @@
         }
         try {
           setStatus('Requesting wallet...', false);
-          const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-          const account = (accounts && accounts[0]) || '';
+          // Always trigger MetaMask connect, then read the actively selected account
+          await window.ethereum.request({ method: 'eth_requestAccounts' });
+          // Always grab the currently active account after permission prompt
+          const account = await pickCurrentAccount();
           if (!account) {
             setStatus('No wallet selected.', true);
             return;
@@ -196,32 +201,20 @@
 
       connectBtn.addEventListener('click', connectWallet);
 
-      const reopenBtn = document.getElementById('reopenPermissions');
-      const promptPermissionsDialog = async () => {
-        if (!window.ethereum) {
-          setStatus('MetaMask not detected. Please install MetaMask.', true);
-          return;
-        }
-        try {
-          setStatus('Opening MetaMask permissions...', false);
-          await window.ethereum.request({
-            method: 'wallet_requestPermissions',
-            params: [{ eth_accounts: {} }],
-          });
-          const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+      // Keep wallet address in sync when user switches accounts inside MetaMask
+      if (window.ethereum && window.ethereum.on) {
+        window.ethereum.on('accountsChanged', async (accounts) => {
           const account = (accounts && accounts[0]) || '';
+          walletInput.value = account;
+          loginBtn.disabled = true;
           if (!account) {
-            setStatus('No wallet selected.', true);
+            setStatus('No wallet selected. Please choose an account in MetaMask.', true);
             return;
           }
-          walletInput.value = account;
           const isRegistered = await validateAccount(account);
           loginBtn.disabled = !isRegistered;
-        } catch (err) {
-          setStatus(err && err.message ? err.message : 'Unable to reopen MetaMask dialog.', true);
-        }
-      };
-      reopenBtn.addEventListener('click', promptPermissionsDialog);
+        });
+      }
 
       form.addEventListener('submit', (e) => {
         if (!walletInput.value) {

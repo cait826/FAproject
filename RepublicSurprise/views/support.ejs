@@ -69,7 +69,12 @@
       <% } %>
       <form action="/support" method="post" enctype="multipart/form-data">
         <label>Order Number
-          <input type="text" name="orderId" required />
+          <select name="orderId" required>
+            <option value="">Select your order</option>
+            <% (orders || []).forEach(function(o){ %>
+              <option value="<%= o.id %>"><%= o.id %></option>
+            <% }) %>
+          </select>
         </label>
         <label>Reason
           <select name="reason" required>

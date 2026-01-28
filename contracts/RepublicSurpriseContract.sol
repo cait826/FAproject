@@ -105,7 +105,6 @@ contract RepublicSurpriseContract {
 
     // ---------- Product Audit (events only) ----------
     event ProductAdded(uint256 indexed id, string name, uint256 priceWei, bool enableIndividual, bool enableSet);
-    event ProductUpdated(uint256 indexed id, string name, uint256 priceWei, bool enableIndividual, bool enableSet);
     event ProductStatusChanged(uint256 indexed id, ProductStatus status);
     event ProductAuditLogged(uint256 indexed id, string action, address indexed actor, uint256 timestamp, bytes32 dataHash);
 
@@ -208,53 +207,6 @@ contract RepublicSurpriseContract {
         _logProductAudit(id, "ADD_PRODUCT", dataHash);
 
         emit ProductAdded(id, name, priceWei, enableIndividual, enableSet);
-    }
-
-    function updateProduct(
-        uint256 id,
-        string calldata name,
-        string calldata description,
-        uint256 priceWei,
-        bool enableIndividual,
-        bool enableSet,
-        uint256 individualPriceWei,
-        uint256 individualStock,
-        uint256 setPriceWei,
-        uint256 setStock,
-        uint256 setBoxes
-    ) public onlyAdmin {
-        require(products[id].id != 0, "Product not found");
-        require(bytes(name).length > 0, "name required");
-
-        _validateBlindBoxConfig(
-            enableIndividual,
-            enableSet,
-            individualPriceWei,
-            individualStock,
-            setPriceWei,
-            setStock,
-            setBoxes
-        );
-
-        Product storage p = products[id];
-        p.name = name;
-        p.description = description;
-        p.priceWei = priceWei;
-        p.enableIndividual = enableIndividual;
-        p.enableSet = enableSet;
-        p.individualPriceWei = individualPriceWei;
-        p.individualStock = individualStock;
-        p.setPriceWei = setPriceWei;
-        p.setStock = setStock;
-        p.setBoxes = setBoxes;
-
-        _updateInventoryStatus(id);
-        bytes32 dataHash = keccak256(
-            abi.encode(id, name, description, priceWei, enableIndividual, enableSet, individualPriceWei, individualStock, setPriceWei, setStock, setBoxes)
-        );
-        _logProductAudit(id, "UPDATE_PRODUCT", dataHash);
-
-        emit ProductUpdated(id, name, priceWei, enableIndividual, enableSet);
     }
 
     function deactivateProduct(uint256 id) public onlyAdmin {

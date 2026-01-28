@@ -6,7 +6,6 @@
         <nav style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
           <% if (user.role === 'user') { %>
             <a href="/user/home" style="text-decoration:none; color:#172b4d; font-weight:700;">User Home</a>
-            <a href="/user/profile" style="text-decoration:none; color:#172b4d; font-weight:700;">Edit Details</a>
             <a href="/shopping" style="text-decoration:none; color:#172b4d; font-weight:700;">Shopping</a>
             <a href="/cart" style="text-decoration:none; color:#172b4d; font-weight:700;">Cart</a>
             <a href="/order-tracking" style="text-decoration:none; color:#172b4d; font-weight:700;">Order Tracking</a>
@@ -19,7 +18,8 @@
         </nav>
       <% } %>
     </div>
-    <% const showLoginButton = typeof hideLoginButton === 'undefined' || !hideLoginButton; %>
+    <% const safeHide = (typeof hideLoginButton !== 'undefined') ? hideLoginButton : (typeof locals !== 'undefined' && typeof locals.hideLoginButton !== 'undefined' ? locals.hideLoginButton : false); %>
+    <% const showLoginButton = !safeHide; %>
     <% if (user) { %>
       <form method="post" action="/logout" style="margin:0;">
         <button type="submit" style="

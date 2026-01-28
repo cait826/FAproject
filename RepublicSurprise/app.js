@@ -2,6 +2,7 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
+const session = require('express-session');
 const { Web3 } = require('web3');
 
 // Express app setup
@@ -12,6 +13,23 @@ app.set('views', path.join(__dirname, 'views'));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || 'republic-surprise-secret',
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      sameSite: 'lax'
+    }
+  })
+);
+
+// Hide login button on auth pages
+app.use((req, res, next) => {
+  const authPaths = ['/', '/login', '/register'];
+  res.locals.hideLoginButton = authPaths.includes(req.path);
+  next();
+});
 
 // Web3 + contract wiring
 const providerUrl = process.env.WEB3_PROVIDER_URL || 'http://127.0.0.1:7545';
@@ -47,6 +65,12 @@ let catalogSyncedAt = null;
 let loading = false;
 let listOfProducts = [];
 let currentUser = null;
+
+// Hydrate per-request user state from the session so API calls (e.g., /api/cart) stay authenticated after redirects
+app.use((req, _res, next) => {
+  currentUser = req.session?.user || null;
+  next();
+});
 const users = {};
 const carts = {};
 const products = [
@@ -57,6 +81,10 @@ const products = [
   seedProduct('zimama', 'Zimama', 37.9, 3, 'Single box', '/images/zimama.png', 'Forest critter guardian.'),
   seedProduct('sweet-bun', 'Sweet Bun', 20.9, 12, 'Single box', '/images/sweet_bun.png', 'Fluffy friend for cozy nights.')
 ];
+// Stamp initial creation audit entries for seeded/demo products
+products.forEach((product) => {
+  recordProductAudit(product, 'system', 'Product created', {}, { ...product, auditLog: undefined });
+});
 const deliveries = [];
 const orders = [];
 const DELIVERY_STATUS = {
@@ -98,7 +126,7 @@ app.get('/register/check-wallet', (req, res) => {
 
 // Handle registration
 app.post('/register', (req, res) => {
-  const { walletAddress, name, role } = req.body;
+  const { walletAddress, name, role, address, contact } = req.body;
   const wallet = (walletAddress || '').trim().toLowerCase();
   if (!wallet) {
     return res.status(400).render('registration', {
@@ -114,8 +142,17 @@ app.post('/register', (req, res) => {
       successMessages: []
     });
   }
-  users[wallet] = { walletAddress, name: name || 'User', role: role || 'user' };
+  // Persist full profile details so admin dashboard and profile pages can display them
+  users[wallet] = {
+    walletAddress,
+    name: name || 'User',
+    role: role || 'user',
+    address: (address || '').trim(),
+    contact: (contact || '').trim(),
+    active: true
+  };
   currentUser = users[wallet];
+  req.session.user = currentUser;
   res.render('login', {
     user: null,
     errorMessages: [],
@@ -144,6 +181,7 @@ app.post('/login', (req, res) => {
     });
   }
   currentUser = found;
+  req.session.user = currentUser;
   if (currentUser.role === 'admin') {
     return res.redirect('/admin/dashboard');
   }
@@ -152,7 +190,11 @@ app.post('/login', (req, res) => {
 
 app.post('/logout', (_req, res) => {
   currentUser = null;
-  res.redirect('/');
+  if (_req.session) {
+    _req.session.destroy(() => res.redirect('/'));
+  } else {
+    res.redirect('/');
+  }
 });
 
 // Minimal user home route
@@ -160,16 +202,6 @@ app.get('/user/home', (_req, res) => {
   if (!currentUser) return res.redirect('/login');
   if (isDeliveryUser(currentUser)) return res.redirect('/delivery/dashboard');
   res.render('user-home', {
-    user: currentUser,
-    errorMessages: [],
-    successMessages: []
-  });
-});
-
-// Basic stubs for navigation links used in header
-app.get('/user/profile', (_req, res) => {
-  if (!currentUser) return res.redirect('/login');
-  res.render('user-profile', {
     user: currentUser,
     errorMessages: [],
     successMessages: []
@@ -206,6 +238,14 @@ app.get('/cart', (_req, res) => {
   });
 });
 
+app.get('/api/cart', (_req, res) => {
+  if (!currentUser) return res.status(401).json({ success: false, message: 'Login required' });
+  if (isDeliveryUser(currentUser)) return res.status(403).json({ success: false, message: 'Not allowed' });
+  const cart = carts[currentUser.walletAddress?.toLowerCase()] || [];
+  const totals = getCartTotals(cart);
+  return res.json({ success: true, items: cart, totals });
+});
+
 app.get('/order-tracking', (_req, res) => {
   if (!currentUser) return res.redirect('/login');
   res.render('order-tracking', {
@@ -218,8 +258,10 @@ app.get('/order-tracking', (_req, res) => {
 
 app.get('/support', (_req, res) => {
   if (!currentUser) return res.redirect('/login');
+  const userOrders = getOrdersForUser(currentUser);
   res.render('support', {
     user: currentUser,
+    orders: userOrders,
     errorMessages: [],
     successMessages: []
   });
@@ -397,29 +439,33 @@ app.post('/delivery/update-status', upload.single('proof'), (req, res) => {
   res.redirect('/delivery/update-status');
 });
 
-// Update profile
-app.post('/user/profile', (req, res) => {
-  if (!currentUser) return res.redirect('/login');
-  const { name, contact, address } = req.body;
-  currentUser.name = name || currentUser.name;
-  currentUser.contact = contact || currentUser.contact;
-  currentUser.address = address || currentUser.address;
-  res.render('user-profile', {
-    user: currentUser,
-    errorMessages: [],
-    successMessages: ['Profile updated']
-  });
-});
-
 // Support ticket stub (accept up to 2 attachments)
 app.post('/support', upload.array('attachments', 2), (req, res) => {
   if (!currentUser) return res.redirect('/login');
-  if (!req.body.orderId || !req.body.reason) {
+  const { orderId, reason } = req.body || {};
+  if (!orderId || !reason) {
     return res.status(400).render('support', {
       user: currentUser,
       errorMessages: ['Order number and reason are required'],
       successMessages: []
     });
+  }
+  // Ensure the order belongs to the logged-in user before allowing a refund/support request
+  const order = orders.find((o) => String(o.id) === String(orderId));
+  const wallet = (currentUser.walletAddress || '').toLowerCase();
+  if (!order || (order.customer || '').toLowerCase() !== wallet) {
+    return res.status(403).render('support', {
+      user: currentUser,
+      errorMessages: ['You can only request support/refunds for your own orders.'],
+      successMessages: []
+    });
+  }
+  // If refund reason is cancellation, restock items
+  if (String(reason).toLowerCase() === 'cancelling order') {
+    const restockItems = order.items && order.items.length
+      ? order.items
+      : [{ id: order.product, qty: order.qty }];
+    adjustProductStock(restockItems, +1);
   }
   res.render('support', {
     user: currentUser,
@@ -667,6 +713,175 @@ function buildTrackingPayload(order, cart) {
   };
 }
 
+function recordProductAudit(product, actor = 'admin', action = 'Product updated', before = {}, after = {}) {
+  if (!product) return;
+  if (!Array.isArray(product.auditLog)) product.auditLog = [];
+  const buildSnapshot = (source) => {
+    // Clone shallowly and drop auditLog to avoid circular refs during JSON stringify in views
+    const { auditLog, ...rest } = source || {};
+    return { ...rest };
+  };
+  const fields = [
+    'productName',
+    'productDescription',
+    'enableIndividual',
+    'enableSet',
+    'individualPrice',
+    'individualStock',
+    'setPrice',
+    'setStock',
+    'setBoxes',
+    'price',
+    'stock',
+    'badge',
+    'image',
+    'mainImageIndex',
+    'active'
+  ];
+  const changes = fields
+    .map((field) => ({
+      field,
+      from: before[field],
+      to: after[field]
+    }))
+    .filter((entry) => entry.from !== entry.to);
+
+  product.auditLog.push({
+    action,
+    timestamp: new Date().toISOString(),
+    actor,
+    txHash: '0xLOCAL',
+    changes,
+    snapshot: buildSnapshot(after)
+  });
+}
+
+// Create order records coming from the payment page so admins can see them
+app.post('/create-order', (req, res) => {
+  if (!currentUser) return res.status(401).json({ success: false, message: 'Login required' });
+
+  const {
+    orderId,
+    customerWallet,
+    customerName,
+    contact,
+    address,
+    product,
+    price,
+    qty,
+    status,
+    items = []
+  } = req.body || {};
+
+  const shippingAddress = (address || currentUser.address || '').trim();
+  const contactNumber = (contact || currentUser.contact || '').trim();
+  if (!shippingAddress) {
+    return res.status(400).json({ success: false, message: 'Address is required' });
+  }
+  if (!contactNumber) {
+    return res.status(400).json({ success: false, message: 'Contact is required' });
+  }
+
+  const id = orderId || `ORD-${String(orders.length + 1).padStart(4, '0')}`;
+  const existing = orders.find((o) => String(o.id) === String(id));
+
+  const payload = {
+    id,
+    product: product || 'Mystery Items',
+    customer: (customerWallet || currentUser.walletAddress || '').toLowerCase(),
+    customerName: customerName || currentUser.name || 'Customer',
+    address: shippingAddress,
+    contact: contactNumber,
+    price: Number(price || 0),
+    qty: Number(qty || 1),
+    items: Array.isArray(items) ? items : [],
+    status: status || 'Pending Delivery Confirmation',
+    action: 'order creation',
+    auditLog: [
+      ...(existing?.auditLog || []),
+      {
+        action: 'Order created',
+        timestamp: new Date().toISOString(),
+        function: 'create-order',
+        txHash: '0xLOCAL'
+      }
+    ]
+  };
+
+  if (existing) Object.assign(existing, payload);
+  else orders.push(payload);
+
+  // Reduce product stock based on ordered items
+  const stockItems = payload.items && payload.items.length
+    ? payload.items
+    : [{ id: product, qty: qty }];
+  adjustProductStock(stockItems, -1);
+
+  return res.json({ success: true, orderId: id });
+});
+
+// Create delivery record (used by payment flow to notify delivery team)
+app.post('/create-delivery', (req, res) => {
+  if (!currentUser) return res.status(401).json({ success: false, message: 'Login required' });
+
+  const { orderId, customerWallet, customerName, address, contact } = req.body || {};
+  const shippingAddress = (address || currentUser.address || '').trim();
+  const contactNumber = (contact || currentUser.contact || '').trim();
+  if (!shippingAddress) {
+    return res.status(400).json({ success: false, message: 'Address is required' });
+  }
+  if (!contactNumber) {
+    return res.status(400).json({ success: false, message: 'Contact is required' });
+  }
+  const id = deliveries.length ? deliveries.length + 1 : 1;
+  const deliveryId = `DEL-${String(id).padStart(3, '0')}`;
+
+  const record = {
+    id,
+    deliveryId,
+    orderNumber: orderId || `ORD-${String(id).padStart(4, '0')}`,
+    customer: (customerWallet || currentUser.walletAddress || '').toLowerCase(),
+    customerName: customerName || currentUser.name || 'Customer',
+    address: shippingAddress,
+    contact: contactNumber,
+    status: DELIVERY_STATUS.PENDING,
+    proofImage: null,
+    assignedTo: ''
+  };
+
+  deliveries.push(record);
+  return res.json({ success: true, deliveryId });
+});
+
+// Lightweight order status endpoint for tracking page
+app.get('/order-status/:id', (req, res) => {
+  if (!currentUser) return res.status(401).json({ success: false, message: 'Login required' });
+  const id = req.params.id;
+  const delivery = deliveries.find((d) => String(d.orderNumber || d.id) === String(id));
+  if (!delivery) {
+    return res.status(404).json({ success: false, message: 'Order not found' });
+  }
+  // Ensure the requesting user owns the order
+  const requester = (currentUser.walletAddress || '').toLowerCase();
+  if ((delivery.customer || '').toLowerCase() !== requester) {
+    return res.status(403).json({ success: false, message: 'Forbidden' });
+  }
+  const statusMap = {
+    [DELIVERY_STATUS.PENDING]: 'Pending',
+    [DELIVERY_STATUS.OUT_FOR_DELIVERY]: 'Out for delivery',
+    [DELIVERY_STATUS.DELIVERED_PENDING]: 'Pending delivery confirmation',
+    [DELIVERY_STATUS.COMPLETED]: 'Completed'
+  };
+  const statusLabel = statusMap[delivery.status] || 'Pending';
+  return res.json({
+    success: true,
+    orderId: delivery.orderNumber,
+    status: delivery.status,
+    statusLabel,
+    updatedAt: delivery.updatedAt || delivery.timestamp || ''
+  });
+});
+
 function seedProduct(
   id,
   name,
@@ -697,7 +912,8 @@ function seedProduct(
     setStock,
     setBoxes,
     stock,
-    active: true
+    active: true,
+    auditLog: []
   };
 }
 
@@ -795,21 +1011,36 @@ app.post('/admin/add-product', upload.any(), (req, res) => {
   const badge =
     enableSetBool && enableIndividualBool ? 'Single & Set' : enableSetBool ? 'Set' : 'Single box';
 
-  products.push(
-    seedProduct(
-      `prod-${nextId}`,
-      productName || 'New Product',
-      indivPriceNum || Number(priceWei || 0) || setPriceNum,
-      indivStockNum || setStockNum,
-      badge,
-      '/images/lolo_the_piggy.png',
-      productDescription || '',
-      enableIndividualBool,
-      enableSetBool,
-      setPriceNum,
-      setStockNum,
-      setBoxesNum
-    )
+  // Use uploaded image (first file) if provided; fall back to default
+  const firstFile = Array.isArray(req.files) && req.files.length ? req.files[0] : null;
+  const imagePath = firstFile ? `/images/${firstFile.filename || firstFile.originalname}` : '/images/lolo_the_piggy.png';
+
+  const newProduct = seedProduct(
+    `prod-${nextId}`,
+    productName || 'New Product',
+    indivPriceNum || Number(priceWei || 0) || setPriceNum,
+    indivStockNum || setStockNum,
+    badge,
+    imagePath,
+    productDescription || '',
+    enableIndividualBool,
+    enableSetBool,
+    setPriceNum,
+    setStockNum,
+    setBoxesNum
+  );
+  if (firstFile) {
+    newProduct.images = [imagePath];
+    newProduct.mainImageIndex = '1';
+  }
+
+  products.push(newProduct);
+  recordProductAudit(
+    newProduct,
+    currentUser?.walletAddress || 'admin',
+    'Product created',
+    {},
+    { ...newProduct, auditLog: undefined }
   );
   res.render('admin-add-product', {
     user: currentUser,
@@ -943,30 +1174,23 @@ app.get('/admin/users', (_req, res) => {
   });
 });
 
-app.get('/admin/users/edit/:wallet', (req, res) => {
+// Admin user audit history (placeholder until contract wiring)
+app.get('/admin/users/history/:wallet', (req, res) => {
   if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
   const wallet = (req.params.wallet || '').toLowerCase();
   const target = users[wallet];
   if (!target) return res.status(404).send('User not found');
-  res.render('admin-user-edit', {
-    user: currentUser,
-    errorMessages: [],
-    successMessages: [],
-    targetUser: target
-  });
-});
 
-app.post('/admin/users/edit/:wallet', (req, res) => {
-  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
-  const wallet = (req.params.wallet || '').toLowerCase();
-  const target = users[wallet];
-  if (!target) return res.status(404).send('User not found');
-  const { name, address, contact, role } = req.body;
-  target.name = name || target.name;
-  target.address = address || target.address;
-  target.contact = contact || target.contact;
-  target.role = role || target.role;
-  res.redirect('/admin/users');
+  // TODO: After deployment, replace [] with on-chain history for this wallet.
+  const history = [];
+
+  res.render('admin-user-history', {
+    user: currentUser,
+    targetUser: target,
+    history,
+    errorMessages: [],
+    successMessages: []
+  });
 });
 
 app.post('/admin/reactivate-user/:wallet', (req, res) => {
@@ -974,14 +1198,6 @@ app.post('/admin/reactivate-user/:wallet', (req, res) => {
   const wallet = (req.params.wallet || '').toLowerCase();
   const target = users[wallet];
   if (target) target.active = true;
-  res.redirect('/admin/users');
-});
-
-app.post('/admin/deactivate-user/:wallet', (req, res) => {
-  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
-  const wallet = (req.params.wallet || '').toLowerCase();
-  const target = users[wallet];
-  if (target) target.active = false;
   res.redirect('/admin/users');
 });
 
@@ -995,69 +1211,18 @@ app.get('/admin/customer-service', (_req, res) => {
   });
 });
 
-// Admin product update/deactivate/reactivate
-app.get('/admin/update-product', (req, res) => {
-  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
-  const id = req.query.id;
-  const product = products.find((p) => String(p.id) === String(id));
-  if (!product) return res.status(404).send('Product not found');
-  res.render('admin-update-product', {
-    user: currentUser,
-    product,
-    productId: product.id,
-    hasProduct: true,
-    errorMessages: [],
-    successMessages: []
-  });
-});
-
-const updateProductHandler = (req, res) => {
-  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
-  const id = req.params.id || req.query.id || req.body.productId || req.body.id;
-  const product = products.find((p) => String(p.id) === String(id));
-  if (!product) return res.status(404).send('Product not found');
-
-  const {
-    productName,
-    productDescription,
-    individualPrice,
-    individualStock,
-    setPrice,
-    setStock,
-    setBoxes,
-    enableIndividual,
-    enableSet
-  } = req.body || {};
-
-  const enableIndividualBool = enableIndividual === 'on' || enableIndividual === true || enableIndividual === 'true';
-  const enableSetBool = enableSet === 'on' || enableSet === true || enableSet === 'true';
-
-  product.name = productName || product.name;
-  product.productName = productName || product.productName;
-  product.productDescription = productDescription || product.productDescription;
-  product.description = product.productDescription;
-  product.enableIndividual = enableIndividualBool;
-  product.enableSet = enableSetBool;
-  product.individualPrice = Number(individualPrice || 0) || 0;
-  product.individualStock = Number(individualStock || 0) || 0;
-  product.setPrice = Number(setPrice || 0) || 0;
-  product.setStock = Number(setStock || 0) || 0;
-  product.setBoxes = Number(setBoxes || 0) || 0;
-  product.price = product.individualPrice || product.setPrice || product.price;
-  product.stock = product.individualStock || product.setStock || product.stock;
-  product.badge = enableSetBool && enableIndividualBool ? 'Single & Set' : enableSetBool ? 'Set' : 'Single box';
-
-  res.redirect('/admin/inventory');
-};
-
-app.post('/admin/update-product', express.urlencoded({ extended: true }), updateProductHandler);
-app.post('/admin/update-product/:id', express.urlencoded({ extended: true }), updateProductHandler);
+// Admin product deactivate/reactivate
 
 app.post('/admin/deactivate-product/:id', (req, res) => {
   if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
   const id = req.params.id;
   const product = products.find((p) => String(p.id) === String(id));
-  if (product) product.active = false;
+  if (product) {
+    const before = { ...product };
+    product.active = false;
+    listOfProducts = [...products];
+    recordProductAudit(product, currentUser?.walletAddress || 'admin', 'Product deactivated', before, { ...product });
+  }
   res.redirect('/admin/inventory');
 });
 
@@ -1065,7 +1230,12 @@ app.post('/admin/reactivate-product/:id', (req, res) => {
   if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
   const id = req.params.id;
   const product = products.find((p) => String(p.id) === String(id));
-  if (product) product.active = true;
+  if (product) {
+    const before = { ...product };
+    product.active = true;
+    listOfProducts = [...products];
+    recordProductAudit(product, currentUser?.walletAddress || 'admin', 'Product reactivated', before, { ...product });
+  }
   res.redirect('/admin/inventory');
 });
 
@@ -1078,7 +1248,7 @@ app.get('/admin/product/:id', (req, res) => {
   res.render('admin-product-history', {
     user: currentUser,
     product,
-    history: [],
+    history: product.auditLog || [],
     errorMessages: [],
     successMessages: []
   });
@@ -1171,6 +1341,27 @@ function normalizeProductPayload(raw, idx = 0) {
     setStock,
     setBoxes
   );
+}
+
+function adjustProductStock(items = [], deltaSign = -1) {
+  if (!Array.isArray(items)) return;
+  items.forEach((it) => {
+    const pid = it.id || it.productId || it.product || it.name;
+    const qty = Number(it.qty || it.quantity || 1) || 1;
+    const product = products.find((p) => String(p.id) === String(pid));
+    if (!product) return;
+    const delta = deltaSign * qty;
+    if (product.enableIndividual) {
+      product.individualStock = Math.max(0, Number(product.individualStock || 0) + delta);
+      product.stock = product.individualStock;
+    } else {
+      product.stock = Math.max(0, Number(product.stock || 0) + delta);
+    }
+    if (product.enableSet) {
+      product.setStock = Math.max(0, Number(product.setStock || 0) + delta);
+    }
+  });
+  listOfProducts = [...products];
 }
 
 // Start server

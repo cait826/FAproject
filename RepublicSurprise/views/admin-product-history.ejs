@@ -179,12 +179,10 @@
             <thead>
               <tr>
                 <th>Action</th>
-                <th>Order</th>
                 <th>Timestamp</th>
                 <th>Actor</th>
                 <th>Tx Hash</th>
                 <th>Changes</th>
-                <th>Snapshot</th>
               </tr>
             </thead>
             <tbody>
@@ -192,11 +190,6 @@
                 <tr class="history-row"
                     data-action="<%= (entry.action || '').toLowerCase() %>">
                   <td><%= entry.action %></td>
-                  <td>
-                    <% if (entry.orderId) { %>
-                      <a href="/admin/orders/<%= entry.orderId %>"><%= entry.orderId %></a>
-                    <% } else { %>-<% } %>
-                  </td>
                   <td><%= formatTimestamp(entry.timestamp) %></td>
                   <td><%= entry.actor %></td>
                   <td><%= entry.txHash || entry.hash || '-' %></td>
@@ -210,12 +203,6 @@
                     <% } else { %>
                       -
                     <% } %>
-                  </td>
-                  <td>
-                    <details class="snapshot">
-                      <summary>View</summary>
-                      <pre><%= JSON.stringify(entry.snapshot || {}, null, 2) %></pre>
-                    </details>
                   </td>
                 </tr>
               <% }) %>
