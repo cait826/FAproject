@@ -482,47 +482,28 @@
       const serverProducts = Array.isArray(serverProductsRaw)
         ? serverProductsRaw.filter((item) => item.active !== false)
         : [];
-      const demoProducts = [
-        { id: 'lolo', name: 'Lolo the Piggy', price: 49.9, stock: 8, badge: 'Single box', image: '/images/lolo_the_piggy.png', description: 'A cheerful trio of piggy pals.' },
-        { id: 'pino', name: 'Pino JoJo', price: 37.9, stock: 5, badge: 'Single box', image: '/images/pino_jojo.png', description: 'Dreamy pastel friend.' },
-        { id: 'hinono', name: 'Hinono', price: 61.9, stock: 0, badge: 'Single box', image: '/images/hinono.png', description: 'Collector set of mystical figures.' },
-        { id: 'zimama', name: 'Zimama', price: 37.9, stock: 3, badge: 'Single box', image: '/images/zimama.png', description: 'Forest critter guardian.' },
-        { id: 'sweet-bun', name: 'Sweet Bun', price: 20.9, stock: 12, badge: 'Single box', image: '/images/sweet_bun.png', description: 'Fluffy friend for cozy nights.' },
-        { id: 'hacibubu', name: 'Hacibubu', price: 38.8, stock: 7, badge: 'Limited', image: '/images/hacibubu.png', description: 'Limited run surprise.' }
-      ];
-
-      const fallbackImages = [
-        '/images/lolo_the_piggy.png',
-        '/images/pino_jojo.png',
-        '/images/hinono.png',
-        '/images/zimama.png',
-        '/images/sweet_bun.png',
-        '/images/hacibubu.png'
-      ];
-
       const normalizeProducts = (list) => {
           return list.map((item, index) => {
             const pickPrice = Number(item.price || 0) || 0;
             const stockFromContract = Number(item.stock || 0) || 0;
             const explicitPrice = Number(item.price || 0);
             const explicitStock = Number(item.stock || 0);
-          const badgeContract = 'Single box';
           const price = explicitPrice > 0 ? explicitPrice : pickPrice;
           const stock = Number.isFinite(explicitStock) && explicitStock >= 0 ? explicitStock : stockFromContract;
-          const badge = item.badge || badgeContract || 'Single box';
+          const badge = item.badge || '';
           return {
             id: item.id || `product-${index}`,
-            name: item.productName || item.name || 'Mystery figure',
+            name: item.productName || item.name || '',
             price,
             stock,
             badge,
-            image: item.image || fallbackImages[index % fallbackImages.length],
-            description: item.productDescription || item.description || 'Collectible figure'
+            image: item.image || '',
+            description: item.productDescription || item.description || ''
           };
         });
       };
 
-      const catalog = serverProducts.length ? normalizeProducts(serverProducts) : demoProducts;
+      const catalog = serverProducts.length ? normalizeProducts(serverProducts) : [];
       const state = { sort: 'featured', availability: 'all', search: '' };
       const gridEl = document.getElementById('productGrid');
       const countEl = document.getElementById('itemCount');
@@ -592,18 +573,27 @@
           .map((item) => {
             const available = item.stock > 0;
             const viewHref = '/product?id=' + encodeURIComponent(item.id);
+            const imageMarkup = item.image
+              ? `<img src="${item.image}" alt="${item.name || 'Product image'}" />`
+              : '';
+            const badgeMarkup = item.badge
+              ? `<div class="badge">${item.badge}</div>`
+              : '';
+            const descriptionMarkup = item.description
+              ? `<p class="meta">${item.description}</p>`
+              : '';
             return `
               <article class="card">
                 <div class="image">
-                  <img src="${item.image}" alt="${item.name}" />
-                  <div class="badge">${item.badge}</div>
+                  ${imageMarkup}
+                  ${badgeMarkup}
                 </div>
                 <div class="card-body">
                   <div class="title-row">
                     <h3>${item.name}</h3>
                     <div class="price">${formatPrice(item.price)}</div>
                   </div>
-                  <p class="meta">${item.description || ''}</p>
+                  ${descriptionMarkup}
                   <div class="stock">
                     <span class="dot" style="background:${available ? '#10b981' : '#ef4444'}"></span>
                     ${available ? 'In stock' : 'Out of stock'}

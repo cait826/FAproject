@@ -203,69 +203,6 @@ contract RepublicSurpriseContract {
         emit UserRegistered(user, profileHash);
     }
 
-    // ---------- Cart ---------- (angela)
-    struct CartItem {
-        uint256 productId;
-        uint256 quantity;
-    }
-
-    mapping(address => CartItem[]) private carts;
-
-    event CartItemAdded(
-        address indexed buyer,
-        uint256 productId,
-        uint256 quantity
-    );
-    event CartItemRemoved(address indexed buyer, uint256 productId);
-    event CartCleared(address indexed buyer);
-
-    function addToCart(uint256 productId, uint256 quantity) external {
-        addToCartV2(productId, quantity);
-    }
-
-    function addToCartV2(uint256 productId, uint256 quantity) public {
-        require(quantity > 0, "quantity must be > 0");
-        require(products[productId].id != 0, "product not found");
-
-        Product memory p = products[productId];
-        require(p.status == ProductStatus.Active, "inactive product");
-        require(p.priceWei > 0, "mode disabled");
-
-        carts[msg.sender].push(CartItem(productId, quantity));
-        emit CartItemAdded(msg.sender, productId, quantity);
-    }
-
-    function removeFromCart(uint256 index) external {
-        CartItem[] storage cart = carts[msg.sender];
-        require(index < cart.length, "bad index");
-        uint256 productId = cart[index].productId;
-        cart[index] = cart[cart.length - 1];
-        cart.pop();
-        emit CartItemRemoved(msg.sender, productId);
-    }
-
-    function clearCart() external {
-        delete carts[msg.sender];
-        emit CartCleared(msg.sender);
-    }
-
-    function getCart(address buyer) external view returns (CartItem[] memory) {
-        return carts[buyer];
-    }
-
-    function getCartTotal(address buyer) public view returns (uint256 total) {
-        CartItem[] storage cart = carts[buyer];
-        for (uint256 i = 0; i < cart.length; i++) {
-            Product memory p = products[cart[i].productId];
-            uint256 unit = p.priceWei;
-
-            // fallback to legacy priceWei if needed
-            if (unit == 0) unit = p.priceWei;
-
-            total += unit * cart[i].quantity;
-        }
-    }
-
     // ---------- Orders / Delivery (Merged main flow) ----------
     enum OrderStatus {
         Pending,

@@ -1230,8 +1230,8 @@ app.post('/admin/add-product', upload.any(), async (req, res) => {
   }
 
 
-  // Use uploaded image (first file) if provided; fall back to default
-  const imagePath = firstFile ? `/images/${firstFile.filename || firstFile.originalname}` : '/images/lolo_the_piggy.png';
+  // Use uploaded image (first file) if provided
+  const imagePath = firstFile ? `/images/${firstFile.filename || firstFile.originalname}` : '';
 
   try {
     const accounts = await web3.eth.getAccounts();
@@ -1592,20 +1592,20 @@ function normalizeProductPayload(raw, idx = 0) {
     : raw.status !== undefined
       ? Number(raw.status) === 0
       : true;
-  const badge = raw.badge || 'Single box';
+  const badge = raw.badge || '';
 
   const price = toDisplayPrice(
     raw.price ?? raw.priceWei ?? raw.individualPrice ?? raw.individualPriceWei ?? 0
   );
   const stock = Number(raw.stock ?? raw.individualStock ?? 0) || 0;
-  const image = raw.image || productImageMap[String(id)] || '/images/lolo_the_piggy.png';
+  const image = raw.image || productImageMap[String(id)] || '';
   const images = Array.isArray(raw.images) && raw.images.length
     ? raw.images
     : productGalleryMap[String(id)] || (image ? [image] : []);
 
   return seedProduct(
     id,
-    raw.name || raw.productName || `Product ${idx + 1}`,
+    raw.name || raw.productName || '',
     price,
     stock,
     badge,
