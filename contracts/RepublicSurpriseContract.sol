@@ -46,11 +46,7 @@ contract RepublicSurpriseContract {
     constructor() {
         companyName = "Republic Surprise Shop";
         owner = msg.sender;
-        admin = msg.sender;
-
-        admins[msg.sender] = true;
-        roles[msg.sender] = Role.Seller;
-        emit AdminAdded(msg.sender);
+        admin = address(0);
     }
 
     // --- Role management ---
@@ -61,17 +57,21 @@ contract RepublicSurpriseContract {
         Role role,
         address indexed actor
     );
+    event RoleChanged(
+        address indexed account,
+        Role previousRole,
+        Role newRole,
+        address indexed actor
+    );
 
     function addAdmin(address account) external onlyOwner {
-        admins[account] = true;
-        roles[account] = Role.Admin;
+        _setRole(account, Role.Admin);
         emit AdminAdded(account);
         emit RoleAssigned(account, Role.Admin, msg.sender);
     }
 
     function addDeliveryMan(address account) external onlyAdmin {
-        deliveryMen[account] = true;
-        roles[account] = Role.Delivery;
+        _setRole(account, Role.Delivery);
         emit DeliveryAdded(account);
         emit RoleAssigned(account, Role.Delivery, msg.sender);
     }
@@ -85,21 +85,41 @@ contract RepublicSurpriseContract {
     }
 
     function assignRole(address account, Role role) external onlyAdmin {
+        _setRole(account, role);
+        emit RoleAssigned(account, role, msg.sender);
+    }
+
+    function changeRole(address account, Role role) external onlyAdmin {
+        _setRole(account, role);
+        emit RoleAssigned(account, role, msg.sender);
+    }
+
+    function _setRole(address account, Role role) internal {
         require(account != address(0), "bad account");
+        Role previousRole = roles[account];
 
         if (role == Role.Admin) {
             admins[account] = true;
             deliveryMen[account] = false;
+            if (admin == address(0)) {
+                admin = account;
+            }
         } else if (role == Role.Delivery) {
             deliveryMen[account] = true;
             admins[account] = false;
-        } else if (role == Role.Buyer) {
+        } else {
             admins[account] = false;
             deliveryMen[account] = false;
         }
 
         roles[account] = role;
-        emit RoleAssigned(account, role, msg.sender);
+        emit RoleChanged(account, previousRole, role, msg.sender);
+    }
+
+    function _roleForRegistration(uint256 index) internal pure returns (Role) {
+        if (index == 0) return Role.Admin;
+        if (index == 1) return Role.Delivery;
+        return Role.Buyer;
     }
 
     // ---------- Product ----------
@@ -192,14 +212,13 @@ contract RepublicSurpriseContract {
     event UserRegistered(address indexed user, bytes32 profileHash);
     event UserProfileUpdated(address indexed user, bytes32 profileHash);
 
-    function registerUser(address user, bytes32 profileHash) public onlyAdmin {
+    function registerUser(address user, bytes32 profileHash) public {
         require(!users[user].exists, "User exists");
+        Role assignedRole = _roleForRegistration(userCount);
         uint256 id = ++userCount;
         users[user] = UserProfile(id, true, profileHash);
-        if (roles[user] == Role.None) {
-            roles[user] = Role.Buyer;
-            emit RoleAssigned(user, Role.Buyer, msg.sender);
-        }
+        _setRole(user, assignedRole);
+        emit RoleAssigned(user, assignedRole, msg.sender);
         emit UserRegistered(user, profileHash);
     }
 

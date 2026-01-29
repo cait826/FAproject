@@ -129,6 +129,13 @@ function isDeliveryUser(user) {
   return (user?.role || '').toLowerCase() === 'delivery man';
 }
 
+function normalizeRoleInput(value) {
+  const role = String(value || '').trim().toLowerCase();
+  if (role === 'delivery' || role === 'deliveryman') return 'delivery man';
+  if (role === 'buyer') return 'user';
+  return role;
+}
+
 // Home page
 app.get('/', (_req, res) => {
   // Using existing home.ejs view (no index.ejs in project)
@@ -154,9 +161,16 @@ app.get('/register/check-wallet', (req, res) => {
   res.json({ inUse: !!users[wallet] });
 });
 
+function getInitialRoleForRegistration() {
+  const count = Object.keys(users).length;
+  if (count === 0) return 'admin';
+  if (count === 1) return 'delivery man';
+  return 'user';
+}
+
 // Handle registration
 app.post('/register', (req, res) => {
-  const { walletAddress, name, role, address, contact } = req.body;
+  const { walletAddress, name, address, contact } = req.body;
   const wallet = (walletAddress || '').trim().toLowerCase();
   if (!wallet) {
     return res.status(400).render('registration', {
@@ -172,11 +186,12 @@ app.post('/register', (req, res) => {
       successMessages: []
     });
   }
+  const assignedRole = normalizeRoleInput(getInitialRoleForRegistration());
   // Persist full profile details so admin dashboard and profile pages can display them
   users[wallet] = {
     walletAddress,
     name: name || 'User',
-    role: role || 'user',
+    role: assignedRole,
     address: (address || '').trim(),
     contact: (contact || '').trim()
   };
@@ -209,6 +224,7 @@ app.post('/login', (req, res) => {
       successMessages: []
     });
   }
+  found.role = normalizeRoleInput(found.role);
   currentUser = found;
   req.session.user = currentUser;
   if (currentUser.role === 'admin') {
@@ -1454,6 +1470,95 @@ app.get('/admin/users', (_req, res) => {
     successMessages: [],
     users: Object.values(users)
   });
+});
+
+app.post('/admin/users/role', (req, res) => {
+  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
+  const wallet = String(req.body?.walletAddress || '').trim().toLowerCase();
+  const role = normalizeRoleInput(req.body?.role);
+  const allowedRoles = ['admin', 'delivery man', 'user'];
+
+  if (!wallet || !users[wallet]) {
+    return res.status(400).render('admin-users', {
+      user: currentUser,
+      errorMessages: ['User not found.'],
+      successMessages: [],
+      users: Object.values(users)
+    });
+  }
+
+  if (!allowedRoles.includes(role)) {
+    return res.status(400).render('admin-users', {
+      user: currentUser,
+      errorMessages: ['Invalid role selection.'],
+      successMessages: [],
+      users: Object.values(users)
+    });
+  }
+
+  const applyRoleChange = () => {
+    users[wallet].role = role;
+    if (currentUser.walletAddress && currentUser.walletAddress.toLowerCase() === wallet) {
+      currentUser = users[wallet];
+      req.session.user = currentUser;
+    }
+  };
+  const resolveRedirect = () => {
+    if (currentUser.walletAddress && currentUser.walletAddress.toLowerCase() === wallet) {
+      if (role === 'admin') return '/admin/dashboard';
+      if (role === 'delivery man') return '/delivery/dashboard';
+      return '/user/home';
+    }
+    return '/admin/users';
+  };
+
+  (async () => {
+    const contract = await getContractInstanceAsync();
+    if (!contract) {
+      applyRoleChange();
+      return res.redirect('/admin/users');
+    }
+
+    try {
+      const accounts = await web3.eth.getAccounts();
+      const preferred = (currentUser.walletAddress || '').toLowerCase();
+      const matchedWallet = accounts.find((acct) => acct.toLowerCase() === preferred);
+      const from = matchedWallet || accounts[0];
+      if (!from) {
+        throw new Error('No unlocked blockchain account is available.');
+      }
+
+      let isAdmin = await contract.methods.isAdmin(from).call().catch(() => false);
+      if (!isAdmin) {
+        const owner = await contract.methods.owner().call().catch(() => '');
+        const ownerAccount = accounts.find((acct) => acct.toLowerCase() === String(owner).toLowerCase());
+        if (!ownerAccount) {
+          throw new Error('Selected account is not an on-chain admin.');
+        }
+        await contract.methods.addAdmin(from).send({ from: ownerAccount });
+        isAdmin = true;
+      }
+
+      const roleMap = { user: 1, 'delivery man': 2, admin: 3 };
+      const roleValue = roleMap[role];
+      if (roleValue === undefined) throw new Error('Unknown role mapping.');
+
+      const changeRoleMethod = contract.methods.changeRole
+        ? contract.methods.changeRole(wallet, roleValue)
+        : contract.methods.assignRole(wallet, roleValue);
+      await changeRoleMethod.send({ from });
+      applyRoleChange();
+      return res.redirect(resolveRedirect());
+    } catch (error) {
+      console.error('Error updating role on-chain:', error);
+      return res.status(500).render('admin-users', {
+        user: currentUser,
+        errorMessages: [error?.message || 'Unable to update role on-chain.'],
+        successMessages: [],
+        users: Object.values(users)
+      });
+    }
+  })();
 });
 
 // Admin product deactivate/reactivate

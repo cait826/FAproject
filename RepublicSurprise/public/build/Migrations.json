@@ -467,12 +467,12 @@
     "5777": {
       "events": {},
       "links": {},
-      "address": "0x92C945c437dB4e18f3f641cD6cC62A9d4f1a82D0",
-      "transactionHash": "0xeea3245452547053efd782e6bbc05ccc12fad733f4383989c2b42bb16d078ad7"
+      "address": "0x955B9404984aAF59836748143A5A334dfC755BB6",
+      "transactionHash": "0xc16a6b76369a9e787a39a6d7ef91915a4e5d357e321cec264706e93012192f74"
     }
   },
   "schemaVersion": "3.4.16",
-  "updatedAt": "2026-01-29T06:18:49.348Z",
+  "updatedAt": "2026-01-29T09:51:08.761Z",
   "devdoc": {
     "kind": "dev",
     "methods": {},
