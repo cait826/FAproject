@@ -224,7 +224,7 @@
             <div class="image-grid">
               <div class="image-card">
                 <label for="image1">Image</label>
-                <input type="file" id="image1" name="images" accept="image/*" />
+                <input type="file" id="image1" name="images" accept="image/*" required />
               </div>
             </div>
           </div>
@@ -236,18 +236,18 @@
             </div>
             <div>
               <label for="productDescription">Product Description</label>
-              <textarea id="productDescription" name="productDescription" placeholder="Highlight the blind box theme"></textarea>
+              <textarea id="productDescription" name="productDescription" placeholder="Highlight the blind box theme" required></textarea>
             </div>
           </div>
 
           <div class="two-col">
             <div>
               <label for="individualPrice">Price per box ($)</label>
-              <input id="individualPrice" name="individualPrice" type="number" min="0" step="0.01" />
+              <input id="individualPrice" name="individualPrice" type="number" min="0.01" step="0.01" required />
             </div>
             <div>
               <label for="individualStock">Stock quantity (individual)</label>
-              <input id="individualStock" name="individualStock" type="number" min="0" step="1" />
+              <input id="individualStock" name="individualStock" type="number" min="1" step="1" required />
             </div>
           </div>
 
