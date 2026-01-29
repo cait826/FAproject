@@ -196,13 +196,7 @@
                     <%= product.productName %>
                   </td>
                   <td><%= product.productDescription %></td>
-                  <td>
-                    <% if (product.enableIndividual) { %>
-                      $<%= product.individualPrice %> / Stock: <%= product.individualStock %>
-                    <% } else { %>
-                      -
-                    <% } %>
-                  </td>
+                    <td>$<%= product.price %> / Stock: <%= product.stock %></td>
                   <td>
                     <%= product.active === false ? 'Deactivated' : 'Active' %>
                   </td>

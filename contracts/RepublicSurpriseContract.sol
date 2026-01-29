@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-
 contract RepublicSurpriseContract {
     // ---------- Roles ----------
     address public owner;
@@ -34,7 +33,10 @@ contract RepublicSurpriseContract {
     }
 
     modifier onlyDeliveryOrAdmin() {
-        require(deliveryMen[msg.sender] || admins[msg.sender], "delivery/admin only");
+        require(
+            deliveryMen[msg.sender] || admins[msg.sender],
+            "delivery/admin only"
+        );
         _;
     }
 
@@ -54,7 +56,11 @@ contract RepublicSurpriseContract {
     // --- Role management ---
     event AdminAdded(address indexed account);
     event DeliveryAdded(address indexed account);
-    event RoleAssigned(address indexed account, Role role, address indexed actor);
+    event RoleAssigned(
+        address indexed account,
+        Role role,
+        address indexed actor
+    );
 
     function addAdmin(address account) external onlyOwner {
         admins[account] = true;
@@ -96,12 +102,6 @@ contract RepublicSurpriseContract {
         emit RoleAssigned(account, role, msg.sender);
     }
 
-    // ---------- Inventory Status (legacy) ----------
-    enum RepublicSurpriseStatus {
-        InStock,
-        OutOfStock
-    }
-
     // ---------- Product ----------
     enum ProductStatus {
         Active,
@@ -112,124 +112,57 @@ contract RepublicSurpriseContract {
         uint256 id;
         string name;
         string description;
-
-        // legacy single price (kept for older cart total logic)
         uint256 priceWei;
-
+        uint256 stock;
         ProductStatus status;
-
-        // blind box sale config
-        bool enableIndividual;
-        bool enableSet;
-
-        uint256 individualPriceWei;
-        uint256 individualStock;
-
-        uint256 setPriceWei;
-        uint256 setStock;
-        uint256 setBoxes;
     }
 
     uint256 public productCount;
     uint256 public RepublicSurpriseCount;
 
     mapping(uint256 => Product) public products;
-    mapping(uint256 => RepublicSurpriseStatus) public productInventoryStatus;
 
     // ---------- Product Events ----------
-    event ProductAdded(uint256 indexed id, string name, uint256 priceWei, bool enableIndividual, bool enableSet);
+    event ProductAdded(uint256 indexed id, string name, uint256 priceWei);
     event ProductStatusChanged(uint256 indexed id, ProductStatus status);
 
-    function _validateBlindBoxConfig(
-        bool enableIndividual,
-        bool enableSet,
-        uint256 individualPriceWei,
-        uint256 individualStock,
-        uint256 setPriceWei,
-        uint256 setStock,
-        uint256 setBoxes
+    function _validateProductConfig(
+        uint256 priceWei,
+        uint256 stock
     ) internal pure {
-        require(enableIndividual || enableSet, "Select at least one purchase type");
-
-        if (enableIndividual) {
-            require(individualPriceWei > 0, "Individual price required");
-            // allow stock to be 0 if you want "preorder" style; if not, uncomment:
-            // require(individualStock > 0, "Individual stock required");
-        } else {
-            require(individualPriceWei == 0, "Individual price must be 0");
-            require(individualStock == 0, "Individual stock must be 0");
-        }
-
-        if (enableSet) {
-            require(setPriceWei > 0, "Set price required");
-            // allow stock to be 0 if you want; if not, uncomment:
-            // require(setStock > 0, "Set stock required");
-            require(setBoxes > 0, "Set boxes required");
-        } else {
-            require(setPriceWei == 0, "Set price must be 0");
-            require(setStock == 0, "Set stock must be 0");
-            require(setBoxes == 0, "Set boxes must be 0");
-        }
+        require(priceWei > 0, "Price required");
+        require(stock > 0, "Stock required");
     }
 
-    function _updateInventoryStatus(uint256 id) internal {
-        Product storage p = products[id];
-        bool hasStock =
-            (p.enableIndividual && p.individualStock > 0) ||
-            (p.enableSet && p.setStock > 0);
-
-        productInventoryStatus[id] = hasStock
-            ? RepublicSurpriseStatus.InStock
-            : RepublicSurpriseStatus.OutOfStock;
+    function isInStock(uint256 id) public view returns (bool) {
+        return products[id].stock > 0;
     }
 
-    // Add product 
+    // Add product (auto-increment id)
     function addProduct(
-        uint256 id,
         string calldata name,
         string calldata description,
         uint256 priceWei,
-        bool enableIndividual,
-        bool enableSet,
-        uint256 individualPriceWei,
-        uint256 individualStock,
-        uint256 setPriceWei,
-        uint256 setStock,
-        uint256 setBoxes
+        uint256 stock
     ) public onlyAdmin {
-        require(products[id].id == 0, "Product exists");
         require(bytes(name).length > 0, "name required");
 
-        _validateBlindBoxConfig(
-            enableIndividual,
-            enableSet,
-            individualPriceWei,
-            individualStock,
-            setPriceWei,
-            setStock,
-            setBoxes
-        );
+        _validateProductConfig(priceWei, stock);
+
+        uint256 id = ++productCount;
 
         products[id] = Product({
             id: id,
             name: name,
             description: description,
             priceWei: priceWei,
-            status: ProductStatus.Active,
-            enableIndividual: enableIndividual,
-            enableSet: enableSet,
-            individualPriceWei: individualPriceWei,
-            individualStock: individualStock,
-            setPriceWei: setPriceWei,
-            setStock: setStock,
-            setBoxes: setBoxes
+            stock: stock,
+            status: ProductStatus.Active
         });
 
-        productCount += 1;
         RepublicSurpriseCount = productCount;
 
-        _updateInventoryStatus(id);
-        emit ProductAdded(id, name, priceWei, enableIndividual, enableSet);
+        emit ProductAdded(id, name, priceWei);
     }
 
     function deactivateProduct(uint256 id) public onlyAdmin {
@@ -248,86 +181,58 @@ contract RepublicSurpriseContract {
 
     // ---------- Users (on-chain status only) ----------
     struct UserProfile {
+        uint256 id;
         bool exists;
-        bool active;
         bytes32 profileHash;
     }
 
     mapping(address => UserProfile) public users;
+    uint256 public userCount;
 
     event UserRegistered(address indexed user, bytes32 profileHash);
     event UserProfileUpdated(address indexed user, bytes32 profileHash);
-    event UserStatusChanged(address indexed user, bool active);
-    event UserAuditLogged(address indexed user, string action, address indexed actor, bytes32 profileHash, bool active, uint256 timestamp);
 
     function registerUser(address user, bytes32 profileHash) public onlyAdmin {
         require(!users[user].exists, "User exists");
-        users[user] = UserProfile(true, true, profileHash);
+        uint256 id = ++userCount;
+        users[user] = UserProfile(id, true, profileHash);
         if (roles[user] == Role.None) {
             roles[user] = Role.Buyer;
             emit RoleAssigned(user, Role.Buyer, msg.sender);
         }
         emit UserRegistered(user, profileHash);
-        emit UserAuditLogged(user, "REGISTER", msg.sender, profileHash, true, block.timestamp);
-    }
-
-    function updateUserProfile(address user, bytes32 profileHash) public {
-        require(msg.sender == user, "user only");
-        require(users[user].exists, "User not found");
-        users[user].profileHash = profileHash;
-        emit UserProfileUpdated(user, profileHash);
-        emit UserAuditLogged(user, "UPDATE_PROFILE", msg.sender, profileHash, users[user].active, block.timestamp);
-    }
-
-    function deactivateUser(address user) public onlyAdmin {
-        require(users[user].exists, "User not found");
-        users[user].active = false;
-        emit UserStatusChanged(user, false);
-        emit UserAuditLogged(user, "DEACTIVATE", msg.sender, users[user].profileHash, false, block.timestamp);
-    }
-
-    function reactivateUser(address user) public onlyAdmin {
-        require(users[user].exists, "User not found");
-        users[user].active = true;
-        emit UserStatusChanged(user, true);
-        emit UserAuditLogged(user, "REACTIVATE", msg.sender, users[user].profileHash, true, block.timestamp);
-    }
-
-    function logUserAudit(address user, string calldata action) external onlyAdmin {
-        UserProfile storage profile = users[user];
-        require(profile.exists, "User not found");
-        emit UserAuditLogged(user, action, msg.sender, profile.profileHash, profile.active, block.timestamp);
     }
 
     // ---------- Cart ---------- (angela)
-    // NOTE: to support both individual/set pricing, we store isSet in cart items.
     struct CartItem {
         uint256 productId;
         uint256 quantity;
-        bool isSet;
     }
 
     mapping(address => CartItem[]) private carts;
 
-    event CartItemAdded(address indexed buyer, uint256 productId, uint256 quantity, bool isSet);
+    event CartItemAdded(
+        address indexed buyer,
+        uint256 productId,
+        uint256 quantity
+    );
     event CartItemRemoved(address indexed buyer, uint256 productId);
     event CartCleared(address indexed buyer);
 
     function addToCart(uint256 productId, uint256 quantity) external {
-        // legacy function: defaults to individual purchase
-        addToCartV2(productId, quantity, false);
+        addToCartV2(productId, quantity);
     }
 
-    function addToCartV2(uint256 productId, uint256 quantity, bool isSet) public {
+    function addToCartV2(uint256 productId, uint256 quantity) public {
         require(quantity > 0, "quantity must be > 0");
         require(products[productId].id != 0, "product not found");
 
         Product memory p = products[productId];
         require(p.status == ProductStatus.Active, "inactive product");
-        require(isSet ? p.enableSet : p.enableIndividual, "mode disabled");
+        require(p.priceWei > 0, "mode disabled");
 
-        carts[msg.sender].push(CartItem(productId, quantity, isSet));
-        emit CartItemAdded(msg.sender, productId, quantity, isSet);
+        carts[msg.sender].push(CartItem(productId, quantity));
+        emit CartItemAdded(msg.sender, productId, quantity);
     }
 
     function removeFromCart(uint256 index) external {
@@ -352,7 +257,7 @@ contract RepublicSurpriseContract {
         CartItem[] storage cart = carts[buyer];
         for (uint256 i = 0; i < cart.length; i++) {
             Product memory p = products[cart[i].productId];
-            uint256 unit = cart[i].isSet ? p.setPriceWei : p.individualPriceWei;
+            uint256 unit = p.priceWei;
 
             // fallback to legacy priceWei if needed
             if (unit == 0) unit = p.priceWei;
@@ -375,12 +280,11 @@ contract RepublicSurpriseContract {
         uint256 id;
         address buyer;
         uint256 productId;
-        bool isSet;
         uint256 qty;
-        uint256 paid;       // wei
+        uint256 paid; // wei
         OrderStatus status;
         string deliveryId;
-        string proofImage;  // base64 hash/URI if needed
+        string proofImage; // base64 hash/URI if needed
     }
 
     uint256 public orderCount;
@@ -403,7 +307,6 @@ contract RepublicSurpriseContract {
         uint256 productId,
         address buyer,
         uint256 qty,
-        bool isSet,
         uint256 paid
     );
 
@@ -415,8 +318,18 @@ contract RepublicSurpriseContract {
     );
 
     event OrderStatusChanged(uint256 indexed orderId, OrderStatus status);
-    event DeliveryAssigned(uint256 indexed orderId, address indexed deliveryMan, address indexed actor);
-    event DeliveryLogAdded(uint256 indexed orderId, OrderStatus status, address indexed actor, string note, string proofImage);
+    event DeliveryAssigned(
+        uint256 indexed orderId,
+        address indexed deliveryMan,
+        address indexed actor
+    );
+    event DeliveryLogAdded(
+        uint256 indexed orderId,
+        OrderStatus status,
+        address indexed actor,
+        string note,
+        string proofImage
+    );
 
     function _logDelivery(
         uint256 orderId,
@@ -436,49 +349,44 @@ contract RepublicSurpriseContract {
         emit DeliveryLogAdded(orderId, status, msg.sender, note, proofImage);
     }
 
-    function productPrice(uint256 productId, bool isSet, uint256 qty) external view returns (uint256) {
+    function productPrice(
+        uint256 productId,
+        uint256 qty
+    ) external view returns (uint256) {
         Product memory p = products[productId];
-        uint256 unit = isSet ? p.setPriceWei : p.individualPriceWei;
+        uint256 unit = p.priceWei;
         require(unit > 0, "price missing");
         return unit * qty;
     }
 
-    function buy(uint256 productId, bool isSet, uint256 qty, string calldata deliveryId)
-        external
-        payable
-        returns (uint256 orderId)
-    {
+    function buy(
+        uint256 productId,
+        uint256 qty,
+        string calldata deliveryId
+    ) external payable returns (uint256 orderId) {
         require(qty > 0, "qty > 0");
 
         Product storage p = products[productId];
         require(p.id != 0, "product not found");
         require(p.status == ProductStatus.Active, "inactive product");
-        require(isSet ? p.enableSet : p.enableIndividual, "mode disabled");
+        require(p.priceWei > 0, "mode disabled");
+        require(p.stock > 0, "Out of stock");
+        require(p.stock >= qty, "insufficient stock");
 
-        if (isSet) {
-            require(p.setStock >= qty, "insufficient set stock");
-        } else {
-            require(p.individualStock >= qty, "insufficient box stock");
-        }
-
-        uint256 unit = isSet ? p.setPriceWei : p.individualPriceWei;
+        uint256 unit = p.priceWei;
         require(unit > 0, "price missing");
         uint256 totalPrice = unit * qty;
 
         require(msg.value == totalPrice, "wrong payment");
 
         // debit stock
-        if (isSet) p.setStock -= qty;
-        else p.individualStock -= qty;
-
-        _updateInventoryStatus(productId);
+        p.stock -= qty;
 
         orderId = ++orderCount;
         orders[orderId] = Order({
             id: orderId,
             buyer: msg.sender,
             productId: productId,
-            isSet: isSet,
             qty: qty,
             paid: msg.value,
             status: OrderStatus.Paid,
@@ -486,11 +394,14 @@ contract RepublicSurpriseContract {
             proofImage: ""
         });
 
-        emit OrderCreated(orderId, productId, msg.sender, qty, isSet, msg.value);
+        emit OrderCreated(orderId, productId, msg.sender, qty, msg.value);
         _logDelivery(orderId, OrderStatus.Paid, "ORDER_PAID", "");
     }
 
-    function markOutForDelivery(uint256 orderId, string calldata deliveryId) external onlyAdmin {
+    function markOutForDelivery(
+        uint256 orderId,
+        string calldata deliveryId
+    ) external onlyAdmin {
         Order storage o = orders[orderId];
         require(o.id != 0, "order not found");
         require(o.status == OrderStatus.Paid, "not paid");
@@ -503,7 +414,10 @@ contract RepublicSurpriseContract {
     }
 
     // merged signature: allow delivery man OR admin (since old code used onlyAdmin)
-    function submitProof(uint256 orderId, string calldata proofImage) external onlyDeliveryOrAdmin {
+    function submitProof(
+        uint256 orderId,
+        string calldata proofImage
+    ) external onlyDeliveryOrAdmin {
         Order storage o = orders[orderId];
         require(o.id != 0, "order not found");
         require(o.status == OrderStatus.OutForDelivery, "wrong state");
@@ -525,7 +439,10 @@ contract RepublicSurpriseContract {
         _logDelivery(orderId, o.status, "DELIVERY_CONFIRMED", o.proofImage);
     }
 
-    function assignDeliveryManToOrder(uint256 orderId, address deliveryMan) external onlyAdmin {
+    function assignDeliveryManToOrder(
+        uint256 orderId,
+        address deliveryMan
+    ) external onlyAdmin {
         require(deliveryMen[deliveryMan], "not delivery");
         Order storage o = orders[orderId];
         require(o.id != 0, "order not found");
@@ -579,15 +496,21 @@ contract RepublicSurpriseContract {
         _logDelivery(orderId, status, note, proofImage);
     }
 
-    function getDeliveryHistory(uint256 orderId) external view returns (DeliveryLog[] memory) {
+    function getDeliveryHistory(
+        uint256 orderId
+    ) external view returns (DeliveryLog[] memory) {
         return deliveryLogs[orderId];
     }
 
-    function getOrderDetail(uint256 orderId) external view returns (Order memory) {
+    function getOrderDetail(
+        uint256 orderId
+    ) external view returns (Order memory) {
         return orders[orderId];
     }
 
-    function getOrdersForDelivery(address deliveryMan) external view returns (uint256[] memory) {
+    function getOrdersForDelivery(
+        address deliveryMan
+    ) external view returns (uint256[] memory) {
         return ordersByDeliveryMan[deliveryMan];
     }
 
@@ -613,8 +536,15 @@ contract RepublicSurpriseContract {
     mapping(address => uint256[]) public userOrdersByUser;
     uint256 public nextUserOrderId;
 
-    event UserOrderCreated(uint256 indexed orderId, address indexed buyer, uint256 totalAmount);
-    event UserOrderStatusUpdated(uint256 indexed orderId, UserOrderStatus status);
+    event UserOrderCreated(
+        uint256 indexed orderId,
+        address indexed buyer,
+        uint256 totalAmount
+    );
+    event UserOrderStatusUpdated(
+        uint256 indexed orderId,
+        UserOrderStatus status
+    );
 
     function createUserOrder(uint256 totalAmount) external {
         uint256 id = nextUserOrderId;
@@ -632,7 +562,10 @@ contract RepublicSurpriseContract {
         emit UserOrderCreated(id, msg.sender, totalAmount);
     }
 
-    function updateUserOrderStatus(uint256 id, UserOrderStatus status) external onlyAdmin {
+    function updateUserOrderStatus(
+        uint256 id,
+        UserOrderStatus status
+    ) external onlyAdmin {
         UserOrder storage o = userOrders[id];
         require(o.buyer != address(0), "order not found");
         o.status = status;
@@ -642,30 +575,30 @@ contract RepublicSurpriseContract {
     // ---------- Legacy Payment (kept) ----------
     struct Payment {
         address buyer;
-        uint256 amountPaid;     // wei
+        uint256 amountPaid; // wei
     }
 
     mapping(uint256 => Payment) public payments; // orderId -> payment
 
     event Paid(uint256 orderId, address buyer, uint256 amountPaid);
-    function paywithMetamask(uint256 orderId, uint256 productId) public payable {
+    function paywithMetamask(
+        uint256 orderId,
+        uint256 productId
+    ) public payable {
         require(msg.value > 0, "pay > 0");
         require(orders[orderId].id == 0, "order exists");
         require(products[productId].id != 0, "product not found");
 
         Product storage p = products[productId];
         require(p.status == ProductStatus.Active, "inactive product");
-        require(p.enableIndividual, "individual disabled");
-        require(p.individualStock >= 1, "insufficient stock");
+        require(p.stock > 0, "Out of stock");
+        require(p.stock >= 1, "insufficient stock");
 
-        uint256 unit = p.individualPriceWei;
-        if (unit == 0) unit = p.priceWei;
-        require(unit > 0, "price missing");
-        require(msg.value == unit, "incorrect amount");
+        require(p.priceWei > 0, "price missing");
+        require(msg.value == p.priceWei, "incorrect amount");
 
         // debit 1 box
-        p.individualStock -= 1;
-        _updateInventoryStatus(productId);
+        p.stock -= 1;
 
         // store legacy payment record
         payments[orderId] = Payment(msg.sender, msg.value);
@@ -675,7 +608,6 @@ contract RepublicSurpriseContract {
             id: orderId,
             buyer: msg.sender,
             productId: productId,
-            isSet: false,
             qty: 1,
             paid: msg.value,
             status: OrderStatus.Paid,
@@ -687,7 +619,7 @@ contract RepublicSurpriseContract {
         if (orderId > orderCount) orderCount = orderId;
 
         emit Paid(orderId, msg.sender, msg.value);
-        emit OrderCreated(orderId, productId, msg.sender, 1, false, msg.value);
+        emit OrderCreated(orderId, productId, msg.sender, 1, msg.value);
     }
 
     // ---------- Treasury ----------

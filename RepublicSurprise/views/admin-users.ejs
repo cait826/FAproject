@@ -138,7 +138,7 @@
       </div>
       <div class="card">
         <h1>User Dashboard</h1>
-        <p>View registered users, manage roles, and update account status.</p>
+        <p>View registered users and manage roles.</p>
         <% if (users && users.length) { %>
           <table>
             <thead>
@@ -151,9 +151,7 @@
             <tbody>
               <% users.forEach(function(u) { %>
                 <tr>
-                  <td>
-                    <a class="index-link" href="/admin/users/history/<%= encodeURIComponent(u.walletAddress) %>"><%= u.idx %></a>
-                  </td>
+                  <td><%= u.idx %></td>
                   <td><%= u.walletAddress %></td>
                   <td><%= u.role %></td>
                 </tr>

@@ -32665,12 +32665,12 @@
         }
       },
       "links": {},
-      "address": "0x89e9C41F8445E1353287c6F80EF35A343aa703C3",
-      "transactionHash": "0xa8347feb1df40ccb6c24c37cda4f885c7e89dba8b80b80ef8a2e4edae03e0b30"
+      "address": "0x04Ba27BAd07C6f5C721c14D8eDFb2C8089AfBCEE",
+      "transactionHash": "0xc55f170873a650557906cbcd4a7c6c8c751ec1ae47fe436ca63b08b0c62c48de"
     }
   },
   "schemaVersion": "3.4.16",
-  "updatedAt": "2026-01-29T04:03:03.225Z",
+  "updatedAt": "2026-01-29T06:18:49.355Z",
   "devdoc": {
     "kind": "dev",
     "methods": {},

@@ -501,11 +501,11 @@
       ];
 
       const normalizeProducts = (list) => {
-        return list.map((item, index) => {
-          const pickPrice = Number(item.individualPrice || 0) || 0;
-          const stockFromContract = Number(item.individualStock || 0) || 0;
-          const explicitPrice = Number(item.price || 0);
-          const explicitStock = Number(item.stock || 0);
+          return list.map((item, index) => {
+            const pickPrice = Number(item.price || 0) || 0;
+            const stockFromContract = Number(item.stock || 0) || 0;
+            const explicitPrice = Number(item.price || 0);
+            const explicitStock = Number(item.stock || 0);
           const badgeContract = 'Single box';
           const price = explicitPrice > 0 ? explicitPrice : pickPrice;
           const stock = Number.isFinite(explicitStock) && explicitStock >= 0 ? explicitStock : stockFromContract;

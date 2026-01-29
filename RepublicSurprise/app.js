@@ -13,11 +13,13 @@ app.set('views', path.join(__dirname, 'views'));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
+const sessionStore = new session.MemoryStore();
 app.use(
   session({
     secret: process.env.SESSION_SECRET || 'republic-surprise-secret',
     resave: false,
     saveUninitialized: false,
+    store: sessionStore,
     cookie: {
       sameSite: 'lax'
     }
@@ -36,7 +38,9 @@ const providerUrl = process.env.WEB3_PROVIDER_URL || 'http://127.0.0.1:7545';
 const web3 = new Web3(providerUrl);
 const contractMetaPaths = [
   path.join(__dirname, '..', 'build', 'contracts', 'RepublicSurpriseContract.json'),
-  path.join(__dirname, 'build', 'contracts', 'RepublicSurpriseContract.json')
+  path.join(__dirname, 'build', 'contracts', 'RepublicSurpriseContract.json'),
+  path.join(__dirname, 'public', 'build', 'contracts', 'RepublicSurpriseContract.json'),
+  path.join(__dirname, 'public', 'build', 'RepublicSurpriseContract.json')
 ];
 const contractMeta = contractMetaPaths.reduce((acc, candidate) => {
   if (acc || !fs.existsSync(candidate)) return acc;
@@ -48,10 +52,7 @@ const contractMeta = contractMetaPaths.reduce((acc, candidate) => {
 }, null);
 const contractAbi = contractMeta?.abi || [];
 let contractAddress = process.env.CONTRACT_ADDRESS || '';
-if (!contractAddress && contractMeta?.networks) {
-  const firstNetwork = Object.values(contractMeta.networks)[0];
-  if (firstNetwork?.address) contractAddress = firstNetwork.address;
-}
+let contractNetworkId = null;
 
 // Multer storage for uploaded product images
 const storage = multer.diskStorage({
@@ -77,21 +78,38 @@ app.use((req, _res, next) => {
 });
 const users = {};
 const carts = {};
-const products = [
-  seedProduct('lolo', 'Lolo the Piggy', 49.9, 8, 'Single box', '/images/lolo_the_piggy.png', 'A cheerful trio of piggy pals.'),
-  seedProduct('pino', 'Pino JoJo', 37.9, 5, 'Single box', '/images/pino_jojo.png', 'Dreamy pastel friend.'),
-  seedProduct('hacibubu', 'Hacibubu', 38.8, 7, 'Limited', '/images/hacibubu.png', 'Limited run surprise.'),
-  seedProduct('hinono', 'Hinono', 61.9, 4, 'Single box', '/images/hinono.png', 'Collector set of mystical figures.'),
-  seedProduct('zimama', 'Zimama', 37.9, 3, 'Single box', '/images/zimama.png', 'Forest critter guardian.'),
-  seedProduct('sweet-bun', 'Sweet Bun', 20.9, 12, 'Single box', '/images/sweet_bun.png', 'Fluffy friend for cozy nights.')
-];
-// Stamp initial creation audit entries for seeded/demo products
-products.forEach((product) => {
-  recordProductAudit(product, 'system', 'Product created', {}, { ...product, auditLog: undefined });
-});
+const products = [];
+const productImageMap = {};
+const productGalleryMap = {};
 const deliveries = [];
 const orders = [];
 const tickets = [];
+// Treat Ganache availability as the "session" lifecycle for demo data.
+let ganacheWasUp = true;
+function clearDemoState(reason = 'ganache down') {
+  console.warn(`Clearing demo state: ${reason}`);
+  listOfProducts = [];
+  products.length = 0;
+  deliveries.length = 0;
+  orders.length = 0;
+  tickets.length = 0;
+  Object.keys(users).forEach((key) => delete users[key]);
+  Object.keys(carts).forEach((key) => delete carts[key]);
+  currentUser = null;
+  sessionStore.clear(() => {});
+}
+
+setInterval(async () => {
+  try {
+    await web3.eth.net.isListening();
+    ganacheWasUp = true;
+  } catch (_err) {
+    if (ganacheWasUp) {
+      ganacheWasUp = false;
+      clearDemoState('ganache connection lost');
+    }
+  }
+}, 5000);
 const supportReasons = [
   'Damaged Item',
   'Cancelled Order',
@@ -160,8 +178,7 @@ app.post('/register', (req, res) => {
     name: name || 'User',
     role: role || 'user',
     address: (address || '').trim(),
-    contact: (contact || '').trim(),
-    active: true
+    contact: (contact || '').trim()
   };
   currentUser = users[wallet];
   req.session.user = currentUser;
@@ -220,9 +237,10 @@ app.get('/user/home', (_req, res) => {
   });
 });
 
-app.get('/shopping', (_req, res) => {
+app.get('/shopping', async (_req, res) => {
   if (!currentUser) return res.redirect('/login');
   if (isDeliveryUser(currentUser)) return res.redirect('/delivery/dashboard');
+  await syncProductsFromChain();
   const cart = carts[currentUser.walletAddress?.toLowerCase()] || [];
   const cartCount = cart.reduce((sum, item) => sum + Number(item.qty || 0), 0);
   res.render('user-shopping', {
@@ -787,45 +805,6 @@ function buildTrackingPayload(order, cart) {
   };
 }
 
-function recordProductAudit(product, actor = 'admin', action = 'Product updated', before = {}, after = {}) {
-  if (!product) return;
-  if (!Array.isArray(product.auditLog)) product.auditLog = [];
-  const buildSnapshot = (source) => {
-    // Clone shallowly and drop auditLog to avoid circular refs during JSON stringify in views
-    const { auditLog, ...rest } = source || {};
-    return { ...rest };
-  };
-  const fields = [
-    'productName',
-    'productDescription',
-    'enableIndividual',
-    'individualPrice',
-    'individualStock',
-    'price',
-    'stock',
-    'badge',
-    'image',
-    'mainImageIndex',
-    'active'
-  ];
-  const changes = fields
-    .map((field) => ({
-      field,
-      from: before[field],
-      to: after[field]
-    }))
-    .filter((entry) => entry.from !== entry.to);
-
-  product.auditLog.push({
-    action,
-    timestamp: new Date().toISOString(),
-    actor,
-    txHash: '0xLOCAL',
-    changes,
-    snapshot: buildSnapshot(after)
-  });
-}
-
 function normalizeFullName(value) {
   return String(value || '').trim().replace(/\s+/g, ' ');
 }
@@ -1002,7 +981,8 @@ function seedProduct(
   badge,
   image,
   description,
-  enableIndividual = true
+  active = true,
+  images = []
 ) {
   return {
     id,
@@ -1012,12 +992,9 @@ function seedProduct(
     price,
     badge,
     image,
-    enableIndividual,
-    individualPrice: price,
-    individualStock: stock,
+    images,
     stock,
-    active: true,
-    auditLog: []
+    active
   };
 }
 
@@ -1060,6 +1037,38 @@ app.get('/invoice', (_req, res) => {
     successMessages: []
   });
 });
+
+async function resolveContractAddress() {
+  if (contractAddress) return contractAddress;
+  if (!contractMeta?.networks) return '';
+  try {
+    const networkId = await web3.eth.net.getId();
+    contractNetworkId = networkId;
+    const networkEntry = contractMeta.networks?.[networkId];
+    if (networkEntry?.address) {
+      contractAddress = networkEntry.address;
+      return contractAddress;
+    }
+  } catch (error) {
+    console.warn('Unable to resolve contract network id:', error?.message || error);
+  }
+  const firstNetwork = Object.values(contractMeta.networks)[0];
+  if (firstNetwork?.address) contractAddress = firstNetwork.address;
+  return contractAddress;
+}
+
+async function getContractInstanceAsync() {
+  await resolveContractAddress();
+  if (!contractAbi.length || !contractAddress) return null;
+  return new web3.eth.Contract(contractAbi, contractAddress);
+}
+
+function rememberProductImages(productId, image, images) {
+  if (!productId) return;
+  const key = String(productId);
+  if (image) productImageMap[key] = image;
+  if (Array.isArray(images) && images.length) productGalleryMap[key] = images.slice();
+}
 
 // Admin dashboard stub
 app.get('/admin/dashboard', (_req, res) => {
@@ -1156,8 +1165,9 @@ app.post('/admin/customer-service/:id', (req, res) => {
   res.redirect(`/admin/customer-service/${ticket.id}`);
 });
 
-app.get('/admin/inventory', (_req, res) => {
+app.get('/admin/inventory', async (_req, res) => {
   if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
+  await syncProductsFromChain();
   res.render('admin-inventory', {
     user: currentUser,
     errorMessages: [],
@@ -1175,27 +1185,26 @@ app.get('/admin/add-product', (_req, res) => {
   });
 });
 
-app.post('/admin/add-product', upload.any(), (req, res) => {
+app.post('/admin/add-product', upload.any(), async (req, res) => {
   if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
   const {
     productName,
     productDescription,
-    priceWei,
-    individualPrice,
-    individualStock
+    price,
+    stock
   } = req.body || {};
   const errors = [];
   const trimmedName = String(productName || '').trim();
   const trimmedDescription = String(productDescription || '').trim();
-  const indivPriceNum = Number(individualPrice || 0);
-  const indivStockNum = Number(individualStock || 0);
+  const priceNum = Number(price || 0);
+  const stockNum = Number(stock || 0);
 
   if (!trimmedName) errors.push('Product name is required.');
   if (!trimmedDescription) errors.push('Product description is required.');
-  if (!Number.isFinite(indivPriceNum) || indivPriceNum <= 0) {
+  if (!Number.isFinite(priceNum) || priceNum <= 0) {
     errors.push('Price per box must be greater than 0.');
   }
-  if (!Number.isFinite(indivStockNum) || indivStockNum <= 0) {
+  if (!Number.isFinite(stockNum) || stockNum <= 0) {
     errors.push('Stock quantity must be greater than 0.');
   }
 
@@ -1211,41 +1220,94 @@ app.post('/admin/add-product', upload.any(), (req, res) => {
     });
   }
 
-  const nextId = products.length ? products.length + 1 : 1;
-  const enableIndividualBool = true;
-  const badge = 'Single box';
+  const contract = await getContractInstanceAsync();
+  if (!contract) {
+    return res.status(500).render('admin-add-product', {
+      user: currentUser,
+      errorMessages: ['Smart contract is not configured. Deploy the contract and set CONTRACT_ADDRESS or run truffle migrate.'],
+      successMessages: []
+    });
+  }
+
 
   // Use uploaded image (first file) if provided; fall back to default
   const imagePath = firstFile ? `/images/${firstFile.filename || firstFile.originalname}` : '/images/lolo_the_piggy.png';
 
-  const newProduct = seedProduct(
-    `prod-${nextId}`,
-    trimmedName,
-    indivPriceNum || Number(priceWei || 0),
-    indivStockNum,
-    badge,
-    imagePath,
-    trimmedDescription,
-    enableIndividualBool
-  );
-  if (firstFile) {
-    newProduct.images = [imagePath];
-    newProduct.mainImageIndex = '1';
-  }
+  try {
+    const accounts = await web3.eth.getAccounts();
+    const wallet = (currentUser.walletAddress || '').toLowerCase();
+    const matchedWallet = accounts.find((acct) => acct.toLowerCase() === wallet);
+    const from = matchedWallet || accounts[0];
+    if (!from) {
+      return res.status(500).render('admin-add-product', {
+        user: currentUser,
+        errorMessages: ['No unlocked blockchain account is available.'],
+        successMessages: []
+      });
+    }
+    const owner = await contract.methods.owner().call().catch(() => '');
+    const ownerAccount = accounts.find((acct) => acct.toLowerCase() === String(owner).toLowerCase());
+    const isAdmin = await contract.methods.isAdmin(from).call().catch(() => false);
+    if (!isAdmin) {
+      if (!ownerAccount) {
+        return res.status(403).render('admin-add-product', {
+          user: currentUser,
+          errorMessages: ['Selected account is not an on-chain admin. Unlock the owner/admin account in Ganache and try again.'],
+          successMessages: []
+        });
+      }
+      await contract.methods.addAdmin(from).send({ from: ownerAccount });
+    }
 
-  products.push(newProduct);
-  recordProductAudit(
-    newProduct,
-    currentUser?.walletAddress || 'admin',
-    'Product created',
-    {},
-    { ...newProduct, auditLog: undefined }
-  );
-  res.render('admin-add-product', {
-    user: currentUser,
-    errorMessages: [],
-    successMessages: ['Product added']
-  });
+    const priceWeiValue = web3.utils.toWei(String(priceNum), 'ether');
+
+    await contract.methods.addProduct(
+      trimmedName,
+      trimmedDescription,
+      priceWeiValue,
+      stockNum
+    ).send({ from });
+
+    const chainCount = await contract.methods.productCount().call();
+    const chainNextId = Number(chainCount || 0);
+    const onChain = await contract.methods.products(chainNextId).call();
+    const normalized = normalizeProductPayload({
+      ...onChain,
+      id: chainNextId,
+      name: trimmedName,
+      description: trimmedDescription,
+      price: priceNum,
+      stock: stockNum,
+      image: imagePath
+    });
+    if (firstFile) {
+      normalized.images = [imagePath];
+      normalized.mainImageIndex = '1';
+    }
+    rememberProductImages(normalized.id, imagePath, normalized.images);
+
+    const existingIdx = products.findIndex((p) => String(p.id) === String(normalized.id));
+    if (existingIdx >= 0) {
+      products[existingIdx] = normalized;
+    } else {
+      products.push(normalized);
+    }
+    listOfProducts = [...products];
+
+    res.render('admin-add-product', {
+      user: currentUser,
+      errorMessages: [],
+      successMessages: ['Product added on-chain']
+    });
+  } catch (error) {
+    console.error('Error adding product on-chain:', error);
+    const message = error?.message || 'Unable to add product on-chain.';
+    res.status(500).render('admin-add-product', {
+      user: currentUser,
+      errorMessages: [message],
+      successMessages: []
+    });
+  }
 });
 
 app.get('/admin/orders', (_req, res) => {
@@ -1394,33 +1456,6 @@ app.get('/admin/users', (_req, res) => {
   });
 });
 
-// Admin user audit history (placeholder until contract wiring)
-app.get('/admin/users/history/:wallet', (req, res) => {
-  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
-  const wallet = (req.params.wallet || '').toLowerCase();
-  const target = users[wallet];
-  if (!target) return res.status(404).send('User not found');
-
-  // TODO: After deployment, replace [] with on-chain history for this wallet.
-  const history = [];
-
-  res.render('admin-user-history', {
-    user: currentUser,
-    targetUser: target,
-    history,
-    errorMessages: [],
-    successMessages: []
-  });
-});
-
-app.post('/admin/reactivate-user/:wallet', (req, res) => {
-  if (!currentUser || currentUser.role !== 'admin') return res.redirect('/login');
-  const wallet = (req.params.wallet || '').toLowerCase();
-  const target = users[wallet];
-  if (target) target.active = true;
-  res.redirect('/admin/users');
-});
-
 // Admin product deactivate/reactivate
 
 app.post('/admin/deactivate-product/:id', (req, res) => {
@@ -1428,10 +1463,8 @@ app.post('/admin/deactivate-product/:id', (req, res) => {
   const id = req.params.id;
   const product = products.find((p) => String(p.id) === String(id));
   if (product) {
-    const before = { ...product };
     product.active = false;
     listOfProducts = [...products];
-    recordProductAudit(product, currentUser?.walletAddress || 'admin', 'Product deactivated', before, { ...product });
   }
   res.redirect('/admin/inventory');
 });
@@ -1441,10 +1474,8 @@ app.post('/admin/reactivate-product/:id', (req, res) => {
   const id = req.params.id;
   const product = products.find((p) => String(p.id) === String(id));
   if (product) {
-    const before = { ...product };
     product.active = true;
     listOfProducts = [...products];
-    recordProductAudit(product, currentUser?.walletAddress || 'admin', 'Product reactivated', before, { ...product });
   }
   res.redirect('/admin/inventory');
 });
@@ -1469,11 +1500,13 @@ app.get('/product', (req, res) => {
 });
 
 // Provide contract config for the frontend Web3 instance
-app.get('/contract-config', (_req, res) => {
+app.get('/contract-config', async (_req, res) => {
+  await resolveContractAddress();
   res.json({
     providerUrl,
     contractAddress,
-    abi: contractAbi
+    abi: contractAbi,
+    networkId: contractNetworkId
   });
 });
 
@@ -1489,7 +1522,9 @@ app.post('/web3/products', (req, res) => {
 
     products.length = 0;
     contractProducts.forEach((p, idx) => {
-      products.push(normalizeProductPayload(p, idx));
+      const normalized = normalizeProductPayload(p, idx);
+      products.push(normalized);
+      rememberProductImages(normalized.id, normalized.image, normalized.images);
     });
 
     listOfProducts = [...products];
@@ -1509,24 +1544,75 @@ app.get('/loading-status', (_req, res) => {
   res.json({ loading, syncedAt: catalogSyncedAt });
 });
 
+function toDisplayPrice(value) {
+  if (value === undefined || value === null) return 0;
+  const raw = typeof value === 'string' ? value : value.toString?.() || String(value);
+  if (/^\d+$/.test(raw) && raw.length > 9) {
+    try {
+      return Number(web3.utils.fromWei(raw, 'ether'));
+    } catch (_err) {
+      return Number(raw) || 0;
+    }
+  }
+  const num = Number(raw);
+  return Number.isFinite(num) ? num : 0;
+}
+
+async function syncProductsFromChain() {
+  const contract = await getContractInstanceAsync();
+  if (!contract) return false;
+  loading = true;
+  try {
+    const count = Number(await contract.methods.productCount().call()) || 0;
+    const calls = Array.from({ length: count }, (_, idx) => contract.methods.products(idx + 1).call());
+    const chainProducts = await Promise.all(calls);
+    products.length = 0;
+    chainProducts.forEach((p, idx) => {
+      if (!p || Number(p.id || 0) === 0) return;
+      const normalized = normalizeProductPayload(p, idx);
+      products.push(normalized);
+      rememberProductImages(normalized.id, normalized.image, normalized.images);
+    });
+    listOfProducts = [...products];
+    catalogSyncedAt = new Date().toISOString();
+    loading = false;
+    return true;
+  } catch (error) {
+    loading = false;
+    console.error('Error syncing products from contract:', error);
+    return false;
+  }
+}
+
 // Helper to normalize contract payload into UI-friendly product shape
 function normalizeProductPayload(raw, idx = 0) {
-  const enableIndividual = raw.enableIndividual !== false;
+  const id = raw.id || raw.productId || `prod-${idx + 1}`;
+  const active = raw.active !== undefined
+    ? !!raw.active
+    : raw.status !== undefined
+      ? Number(raw.status) === 0
+      : true;
   const badge = raw.badge || 'Single box';
 
-  const individualPrice =
-    Number(raw.individualPrice ?? raw.individualPriceWei ?? raw.price ?? raw.priceWei ?? 0) || 0;
-  const individualStock = Number(raw.individualStock ?? raw.stock ?? 0) || 0;
+  const price = toDisplayPrice(
+    raw.price ?? raw.priceWei ?? raw.individualPrice ?? raw.individualPriceWei ?? 0
+  );
+  const stock = Number(raw.stock ?? raw.individualStock ?? 0) || 0;
+  const image = raw.image || productImageMap[String(id)] || '/images/lolo_the_piggy.png';
+  const images = Array.isArray(raw.images) && raw.images.length
+    ? raw.images
+    : productGalleryMap[String(id)] || (image ? [image] : []);
 
   return seedProduct(
-    raw.id || raw.productId || `prod-${idx + 1}`,
+    id,
     raw.name || raw.productName || `Product ${idx + 1}`,
-    individualPrice,
-    individualStock,
+    price,
+    stock,
     badge,
-    raw.image || '/images/lolo_the_piggy.png',
+    image,
     raw.description || raw.productDescription || '',
-    enableIndividual
+    active,
+    images
   );
 }
 
@@ -1538,12 +1624,7 @@ function adjustProductStock(items = [], deltaSign = -1) {
     const product = products.find((p) => String(p.id) === String(pid));
     if (!product) return;
     const delta = deltaSign * qty;
-    if (product.enableIndividual) {
-      product.individualStock = Math.max(0, Number(product.individualStock || 0) + delta);
-      product.stock = product.individualStock;
-    } else {
-      product.stock = Math.max(0, Number(product.stock || 0) + delta);
-    }
+    product.stock = Math.max(0, Number(product.stock || 0) + delta);
   });
   listOfProducts = [...products];
 }
